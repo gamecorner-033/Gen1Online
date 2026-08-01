@@ -1,0 +1,12 @@
+Overworld Co-Op Online Mod
+============================
+
+Multiplayer online overworld co-op exploration, hosting/joining via project server relay with 6-character Room Codes!
+
+Features:
+- HOST SERVER: Connects to public relay server and generates 6-character Room Code (e.g. X7K9P2).
+- JOIN SERVER: Enter 6-character Room Code to join anywhere over NAT.
+- Live overworld player movement, facing, and sprite synchronization.
+- 3D Voxel diorama billboard rendering support for Player 2.
+- Facing P2 and pressing A opens Co-Op Menu (PVP BATTLE, TRADE).
+- 100% compatible with Voxel 3D, Followers, Overworld Encounters, and Debug Menu.
