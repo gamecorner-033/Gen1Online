@@ -25,7 +25,8 @@ return function(mod)
   local p2Npc = nil
   local p2FollowerNpc = nil
   local lastSendTime = 0
-  local pendingChallenge = false
+  local pendingRequestStackItem = nil
+  local p2PromptMenuStackItem = nil
 
   -- Patch SPRITE_RED with walker = true for 3D Voxel camera while preserving GBC color palette
   pcall(function()
@@ -100,8 +101,36 @@ return function(mod)
     end
   end
 
+  -- Safely remove stack items
+  local function closePendingRequestUI()
+    if pendingRequestStackItem and Game and Game.stack and Game.stack.stack then
+      for i, item in ipairs(Game.stack.stack) do
+        if item == pendingRequestStackItem then
+          table.remove(Game.stack.stack, i)
+          break
+        end
+      end
+      pendingRequestStackItem = nil
+    end
+  end
+
+  local function closeP2PromptMenu()
+    if p2PromptMenuStackItem and Game and Game.stack and Game.stack.stack then
+      for i, item in ipairs(Game.stack.stack) do
+        if item == p2PromptMenuStackItem then
+          table.remove(Game.stack.stack, i)
+          break
+        end
+      end
+      p2PromptMenuStackItem = nil
+    end
+  end
+
   -- Disconnect Flow: Notice -> Save -> Reload Map Single Player
   local function handleDisconnect(game, reason)
+    closePendingRequestUI()
+    closeP2PromptMenu()
+
     if netSession then
       pcall(function() netSession:close() end)
       netSession = nil
@@ -122,6 +151,54 @@ return function(mod)
     end
 
     game.stack:push(TextBox.new(game, reason or "DISCONNECTED."))
+  end
+
+  -- Persistent Pending Request UI (Ignores A / Z, B opens Cancel confirmation)
+  local function openPendingRequestUI(game, reqType, headerText)
+    closePendingRequestUI()
+
+    local container = {
+      isOverworld = false,
+      update = function(self, dt)
+        if not netSession or netSession.closed then
+          closePendingRequestUI()
+          handleDisconnect(game, "CONNECTION LOST!\nSAVING & RELOADING MAP...")
+          return
+        end
+
+        local input = game.input
+        -- B button opens explicit cancel confirmation menu
+        if input:wasPressed("b") then
+          local confirmItems = {
+            {
+              label = "YES, CANCEL",
+              onSelect = function()
+                if netSession then
+                  netSession:send({ type = (reqType == "battle" and "link_battle_cancel" or "link_trade_cancel") })
+                  netSession:update()
+                end
+                closePendingRequestUI()
+                game.stack:push(TextBox.new(game, "REQUEST CANCELLED."))
+              end
+            },
+            {
+              label = "NO, KEEP WAITING",
+              onSelect = function() end
+            }
+          }
+          game.stack:push(Menu.new(game, confirmItems, { tx = 1, ty = 1, tw = 16, th = 6 }))
+        end
+      end,
+      draw = function(self)
+        Font.drawBox(1, 1, 18, 6)
+        Font.draw(headerText, 16, 20)
+        Font.draw("WAITING FOR P2...", 16, 36)
+        Font.draw("B: CANCEL REQUEST", 16, 52)
+      end
+    }
+
+    pendingRequestStackItem = container
+    game.stack:push(container)
   end
 
   -- Find next immediate free walkable cell for same-tile spawn nudge
@@ -208,7 +285,7 @@ return function(mod)
         y = data.y or 5,
       })
       p2Npc.isCoopPlayer = true
-      p2Npc.passable = false -- Solid physical collision: cannot walk through P2!
+      p2Npc.passable = false
       p2Npc.px = (data.x or 5) * 16
       p2Npc.py = (data.y or 5) * 16
       p2Npc.targetPx = p2Npc.px
@@ -239,7 +316,7 @@ return function(mod)
           })
           p2FollowerNpc.spriteId = spriteId
           p2FollowerNpc.isCoopFollower = true
-          p2FollowerNpc.passable = false -- Solid physical collision: cannot walk through P2 follower!
+          p2FollowerNpc.passable = false
           p2FollowerNpc.px = (data.fx or (data.x or 5)) * 16
           p2FollowerNpc.py = (data.fy or (data.y or 5)) * 16
           p2FollowerNpc.targetPx = p2FollowerNpc.px
@@ -263,11 +340,13 @@ return function(mod)
     end
   end
 
-  -- Start Recomp Online Link Battle (Background Party Heal + Full Recomp Link Battle Engine)
+  -- Start Recomp Online Link Battle
   local function startOnlineLinkBattle(game, isHostRole, seed, p2PartyPacked)
+    closePendingRequestUI()
+    closeP2PromptMenu()
+
     if not game or not netSession then return end
 
-    -- Auto-heal local party using engine Pokemon.heal
     healParty(game)
 
     local myPartyPacked = Protocol.packParty(game.save.party)
@@ -296,7 +375,131 @@ return function(mod)
     end
   end
 
-  -- Network Poll & Packet Dispatcher
+  -- Start Recomp Online Link Trade
+  local function startOnlineLinkTrade(game, isHostRole)
+    closePendingRequestUI()
+    closeP2PromptMenu()
+
+    if not game or not netSession then return end
+
+    local tradeSession = Protocol.TradeSession.new(game.data, game.save.party, {
+      subset = false,
+      strict = false,
+      peerName = (p2Data and p2Data.name) or "PLAYER 2",
+    })
+
+    netSession:send(tradeSession:opening())
+
+    local container = {
+      isOverworld = false,
+      trade = tradeSession,
+      index = 1,
+      update = function(self, dt)
+        if not netSession then
+          game.stack:pop()
+          return
+        end
+        netSession:update()
+        for _, msg in ipairs(netSession:poll()) do
+          local reply = self.trade:handle(msg)
+          if reply then netSession:send(reply) end
+        end
+
+        local t = self.trade
+        if t.stage == "cancelled" then
+          game.stack:pop()
+          game.stack:push(TextBox.new(game, t.error or "THE TRADE WAS CANCELLED."))
+          return
+        end
+
+        if t.stage == "done" then
+          game.stack:pop()
+          local sent = t.party[t.myPick]
+          local received, evoTo = t:apply(game)
+          performForcedSave(game)
+
+          local Sound = require("src.core.Sound")
+          local Screens = require("src.ui.Screens")
+          pcall(function() Sound.play(game.data, "Trade_Machine") end)
+
+          Screens.push(game, "TradeAnim", {
+            sent = sent,
+            received = received,
+            enemyName = (p2Data and p2Data.name) or "TRAINER",
+            playerOt = game.save.player.name,
+            playerOtId = sent.otId or game.save.player.id,
+            enemyOtId = received.otId,
+            onDone = function()
+              local recName = received.nickname or (game.data.pokemon[received.species] and game.data.pokemon[received.species].name) or received.species
+              game.stack:push(TextBox.new(game, string.format("Trade completed!\n%s received\n%s!", game.save.player.name, recName), function()
+                if evoTo then
+                  local Evolution = require("src.pokemon.Evolution")
+                  Evolution.evolve(game, received, evoTo, function() performForcedSave(game) end, "TRADE")
+                end
+              end))
+            end
+          })
+          return
+        end
+
+        -- Handle D-Pad input during trade selection UI
+        local input = game.input
+        if t.stage == "pick" or t.stage == "init" then
+          if input:wasPressed("up") then
+            self.index = math.max(1, self.index - 1)
+          elseif input:wasPressed("down") then
+            self.index = math.min(#game.save.party, self.index + 1)
+          elseif input:wasPressed("a") then
+            if t:canPick(self.index) then
+              t:pick(self.index)
+              netSession:send(t:wireIndex(self.index))
+            end
+          elseif input:wasPressed("b") then
+            t.stage = "cancelled"
+            netSession:send({ type = "cancel" })
+          end
+        elseif t.stage == "confirm" then
+          if input:wasPressed("a") then
+            t:confirm(true)
+            netSession:send({ type = "confirm", ok = true })
+          elseif input:wasPressed("b") then
+            t:confirm(false)
+            netSession:send({ type = "confirm", ok = false })
+          end
+        end
+      end,
+      draw = function(self)
+        local t = self.trade
+        Font.drawBox(1, 1, 18, 11)
+        Font.draw(string.format("TRADE WITH %s", (p2Data and p2Data.name) or "P2"), 16, 20)
+
+        if t.stage == "pick" or t.stage == "init" then
+          Font.draw("SELECT POKEMON:", 16, 36)
+          for i, mon in ipairs(game.save.party) do
+            local name = mon.nickname or (game.data.pokemon[mon.species] and game.data.pokemon[mon.species].name) or mon.species
+            local y = 48 + (i - 1) * 12
+            Font.draw(string.format("%s LV%d", name, mon.level), 28, y)
+            if i == self.index then
+              Font.drawCode(0xEE, 16, y)
+            end
+          end
+          Font.draw("A: SELECT  B: CANCEL", 16, 120)
+        elseif t.stage == "confirm" then
+          local myMon = game.save.party[t.myPick]
+          local myName = myMon and (myMon.nickname or myMon.species) or "MON"
+          Font.draw(string.format("TRADE %s?", myName), 16, 44)
+          Font.draw("A: CONFIRM TRADE", 16, 68)
+          Font.draw("B: CANCEL TRADE", 16, 84)
+        else
+          Font.draw("WAITING FOR P2...", 16, 60)
+        end
+      end
+    }
+
+    game.stack:push(container)
+  end
+
+  -- Network Poll & Packet Dispatcher (Must run continuously on love.update)
   local function pollNetwork(game)
     if not netSession then return end
     netSession:update()
@@ -315,40 +518,100 @@ return function(mod)
         if ow then syncP2Npc(game, ow, p2Data) end
 
       elseif msg.type == "link_battle_req" then
-        pendingChallenge = true
         local items = {
           {
             label = "ACCEPT BATTLE",
             onSelect = function()
-              pendingChallenge = false
+              closeP2PromptMenu()
               local seed = math.random(1, 1000000)
               healParty(game)
               local myPacked = Protocol.packParty(game.save.party)
               netSession:send({ type = "link_battle_accept", seed = seed, party = myPacked })
+              netSession:update()
               startOnlineLinkBattle(game, false, seed, msg.party)
             end
           },
           {
             label = "DECLINE",
             onSelect = function()
-              pendingChallenge = false
+              closeP2PromptMenu()
               netSession:send({ type = "link_battle_decline" })
+              netSession:update()
             end
           }
         }
-        game.stack:push(Menu.new(game, items, { tx = 1, ty = 1, tw = 16, th = 6 }))
+        local m = Menu.new(game, items, { tx = 1, ty = 1, tw = 16, th = 6 })
+        p2PromptMenuStackItem = m
+        game.stack:push(m)
 
       elseif msg.type == "link_battle_accept" then
         startOnlineLinkBattle(game, true, msg.seed or 12345, msg.party)
 
       elseif msg.type == "link_battle_decline" then
+        closePendingRequestUI()
         game.stack:push(TextBox.new(game, "PLAYER 2 DECLINED THE BATTLE."))
+
+      elseif msg.type == "link_battle_cancel" then
+        closeP2PromptMenu()
+        game.stack:push(TextBox.new(game, "PLAYER 1 CANCELLED THE BATTLE."))
+
+      elseif msg.type == "link_trade_req" then
+        if not game.save or not game.save.party or #game.save.party < 2 then
+          netSession:send({ type = "link_trade_decline" })
+          netSession:update()
+          game.stack:push(TextBox.new(game, "PLAYER 2 OFFERED A TRADE,\nBUT YOU NEED 2 POKéMON!"))
+        else
+          local items = {
+            {
+              label = "ACCEPT TRADE",
+              onSelect = function()
+                closeP2PromptMenu()
+                netSession:send({ type = "link_trade_accept" })
+                netSession:update()
+                startOnlineLinkTrade(game, false)
+              end
+            },
+            {
+              label = "DECLINE",
+              onSelect = function()
+                closeP2PromptMenu()
+                netSession:send({ type = "link_trade_decline" })
+                netSession:update()
+              end
+            }
+          }
+          local m = Menu.new(game, items, { tx = 1, ty = 1, tw = 16, th = 6 })
+          p2PromptMenuStackItem = m
+          game.stack:push(m)
+        end
+
+      elseif msg.type == "link_trade_accept" then
+        startOnlineLinkTrade(game, true)
+
+      elseif msg.type == "link_trade_decline" then
+        closePendingRequestUI()
+        game.stack:push(TextBox.new(game, "PLAYER 2 DECLINED THE TRADE."))
+
+      elseif msg.type == "link_trade_cancel" then
+        closeP2PromptMenu()
+        game.stack:push(TextBox.new(game, "PLAYER 1 CANCELLED THE TRADE."))
       end
     end
 
     -- Room Code Assignment for Online Host
     if isHost and not roomCode and netSession.code then
       roomCode = netSession.code
+    end
+  end
+
+  -- Hook love.update safely so pollNetwork ALWAYS runs continuously regardless of UI stack state
+  if _G.love then
+    local origLoveUpdate = _G.love.update
+    _G.love.update = function(dt)
+      if origLoveUpdate then origLoveUpdate(dt) end
+      if Game then
+        pollNetwork(Game)
+      end
     end
   end
 
@@ -568,19 +831,17 @@ return function(mod)
     return list
   end)
 
-  -- Hook Overworld Update to poll network, interpolate P2 movement, & send position
+  -- Hook Overworld Update to interpolate P2 movement & send position
   local origOverworldUpdate = OverworldState.update
   OverworldState.update = function(self, dt)
     if origOverworldUpdate then origOverworldUpdate(self, dt) end
     if not Game then return end
 
-    pollNetwork(Game)
-
     -- Smooth linear interpolation and leg walking animation for P2 Trainer and Follower
     if p2Npc then updateNpcMovement(p2Npc, dt) end
     if p2FollowerNpc then updateNpcMovement(p2FollowerNpc, dt) end
 
-    local now = love.timer and love.timer.getTime() or os.time()
+    local now = (_G.love and _G.love.timer and _G.love.timer.getTime) and _G.love.timer.getTime() or os.time()
     if now - lastSendTime >= 0.05 then
       lastSendTime = now
       sendPosition(Game, self)
@@ -601,12 +862,25 @@ return function(mod)
               healParty(Game)
               local myPacked = Protocol.packParty(Game.save.party)
               netSession:send({ type = "link_battle_req", party = myPacked })
-              Game.stack:push(TextBox.new(Game, "CHALLENGED PLAYER 2!\nWAITING FOR RESPONSE..."))
+              if netSession.update then netSession:update() end
+              openPendingRequestUI(Game, "battle", "CHALLENGED P2 TO BATTLE!")
+            end
+          },
+          {
+            label = "LINK TRADE",
+            onSelect = function()
+              if not Game.save or not Game.save.party or #Game.save.party < 2 then
+                Game.stack:push(TextBox.new(Game, "You need at least 2\nPOKéMON to trade!"))
+                return
+              end
+              netSession:send({ type = "link_trade_req" })
+              if netSession.update then netSession:update() end
+              openPendingRequestUI(Game, "trade", "OFFERED TRADE TO P2!")
             end
           },
           { label = "CANCEL", onSelect = function() end }
         }
-        Game.stack:push(Menu.new(Game, items, { tx = 1, ty = 1, tw = 16, th = 6 }))
+        Game.stack:push(Menu.new(Game, items, { tx = 1, ty = 1, tw = 16, th = 8 }))
         return
       end
     end
@@ -619,7 +893,9 @@ return function(mod)
     if origOverworldDrawUI then origOverworldDrawUI(self) end
 
     if netSession then
-      love.graphics.setColor(1, 1, 1, 1)
+      if _G.love and _G.love.graphics then
+        _G.love.graphics.setColor(1, 1, 1, 1)
+      end
       Font.drawBox(10, 0, 10, 3)
       if roomCode then
         Font.draw("ROOM", 88, 4)

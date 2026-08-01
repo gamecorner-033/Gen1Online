@@ -7,7 +7,8 @@
   "description": "Multiplayer online co-op overworld exploration, room code hosting/joining over project server relay, live player movement sync, 3D Voxel diorama support, and real-time PVP battles.",
   "category": "CONTENT",
   "permissions": [
-    "engine_internals"
+    "engine_internals",
+    "network"
   ],
   "github": "gamecorner-033/Gen1Online"
 }
