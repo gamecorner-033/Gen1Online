@@ -1,7 +1,7 @@
 {
-  "id": "overworld_coop",
-  "name": "Overworld Co-Op Online Mod",
-  "version": "1.0.0",
+  "id": "gen1online",
+  "name": "Gen1Online",
+  "version": "0.1.0",
   "entry": "main.lua",
   "author": "Antigravity & User",
   "description": "Multiplayer online co-op overworld exploration, room code hosting/joining over project server relay, live player movement sync, 3D Voxel diorama support, and real-time PVP battles.",

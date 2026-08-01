@@ -1,5 +1,5 @@
 return function(mod)
-  print("[OverworldCoop] Initializing Overworld Co-Op Online Mod...")
+  print("[Gen1Online] Initializing Gen1Online Mod...")
 
   local Game = require("src.core.Game")
   local Input = require("src.core.Input")
@@ -634,5 +634,5 @@ return function(mod)
     end
   end
 
-  print("[OverworldCoop] Mod initialized successfully.")
+  print("[Gen1Online] Mod initialized successfully.")
 end
