@@ -1,0 +1,28 @@
+name: Release Mod Zip
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Mod Repository
+        uses: actions/checkout@v4
+
+      - name: Package Mod Zip
+        run: |
+          mkdir -p dist
+          zip -r dist/overworld_coop.zip . -x "*.git*" "*.github*" "*.vscode*" "__pycache__*"
+
+      - name: Upload Release Artifact
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/overworld_coop.zip
+        env:
+          GITHUB_TOKEN: ${ secrets.GITHUB_TOKEN }

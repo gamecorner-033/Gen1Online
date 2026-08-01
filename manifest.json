@@ -8,5 +8,6 @@
   "category": "CONTENT",
   "permissions": [
     "engine_internals"
-  ]
+  ],
+  "github": "gamecorner-033/Gen1Online"
 }
