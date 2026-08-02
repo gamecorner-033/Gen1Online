@@ -80,25 +80,25 @@
   "profiles": {
     "63884": {
       "trainerId": "63884",
-      "name": "RED",
-      "title": "SUPER NERD",
+      "name": "BK",
+      "title": "ACE TRAINER",
       "badges": 0,
-      "pokedexCount": 51,
+      "pokedexCount": 4,
       "gtsTrades": 0,
       "pvpWins": 2,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1785700231
+      "timestamp": 1785701303
     },
     "45799": {
       "trainerId": "45799",
-      "name": "JJ",
+      "name": "AAAAAAA",
       "title": "ACE TRAINER",
       "badges": 0,
-      "pokedexCount": 46,
+      "pokedexCount": 144,
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1785700018
+      "timestamp": 1785701913
     },
     "38673": {
       "trainerId": "38673",
@@ -142,7 +142,7 @@
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1785694988
+      "timestamp": 1785701760
     }
   },
   "next_id": 1004
