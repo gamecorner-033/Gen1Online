@@ -1,0 +1,149 @@
+{
+  "listings": {},
+  "user_counts": {
+    "63884": 0,
+    "11531": 0
+  },
+  "history": [
+    {
+      "text": "AAAAAAA TRADED PIKACHU TO Pac-Man FOR Bird",
+      "time": 1785698606
+    },
+    {
+      "text": "Pac-Man (ID 11531) DEPOSITED Bird LV4",
+      "time": 1785696961
+    },
+    {
+      "text": "Psilocy (ID 11531) DEPOSITED VILEPLUME LV100",
+      "time": 1785689878
+    },
+    {
+      "text": "AAAAAAA TRADED PIKACHU TO BK FOR CHARMANDER",
+      "time": 1785683510
+    },
+    {
+      "text": "BK (ID 63884) DEPOSITED CHARMANDER LV50",
+      "time": 1785682536
+    }
+  ],
+  "claim_boxes": {
+    "63884": [
+      {
+        "mon": {
+          "otId": 45799,
+          "dvs": {
+            "special": 2,
+            "defense": 11,
+            "hp": 6,
+            "attack": 2,
+            "speed": 1
+          },
+          "statExp": {
+            "special": 0,
+            "defense": 0,
+            "hp": 0,
+            "attack": 0,
+            "speed": 0
+          },
+          "level": 20,
+          "moves": [
+            {
+              "pp": 30,
+              "id": "THUNDERSHOCK"
+            },
+            {
+              "pp": 40,
+              "id": "GROWL"
+            },
+            {
+              "pp": 20,
+              "id": "THUNDER_WAVE"
+            },
+            {
+              "pp": 30,
+              "id": "QUICK_ATTACK"
+            }
+          ],
+          "species": "PIKACHU",
+          "exp": 8000,
+          "hp": 46,
+          "ot": "AAAAAAA"
+        },
+        "fromName": "AAAAAAA",
+        "fromId": "45799",
+        "originalOffered": "CHARMANDER",
+        "timestamp": 1785683510
+      }
+    ],
+    "11531": []
+  },
+  "profiles": {
+    "63884": {
+      "trainerId": "63884",
+      "name": "RED",
+      "title": "SUPER NERD",
+      "badges": 0,
+      "pokedexCount": 51,
+      "gtsTrades": 0,
+      "pvpWins": 2,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1785700231
+    },
+    "45799": {
+      "trainerId": "45799",
+      "name": "JJ",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 46,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1785700018
+    },
+    "38673": {
+      "trainerId": "38673",
+      "name": "THOMAS",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 23,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1785683485
+    },
+    "11531": {
+      "trainerId": "11531",
+      "name": "ASH",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 3,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1785700355
+    },
+    "43253": {
+      "trainerId": "43253",
+      "name": "YELLOW",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 1,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1785693878
+    },
+    "60368": {
+      "trainerId": "60368",
+      "name": "Chris",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 4,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1785694988
+    }
+  },
+  "next_id": 1004
+}

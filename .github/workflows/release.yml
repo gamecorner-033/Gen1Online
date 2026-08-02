@@ -1,0 +1,33 @@
+name: Create Gen1Online Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Create Release Zip
+        run: |
+          mkdir -p build/gen1online
+          cp -r main.lua manifest.json mod.card README.md Dockerfile gts_server.py build/gen1online/
+          cd build
+          zip -r ../gen1online.zip gen1online
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: gen1online.zip
+          draft: false
+          prerelease: false
+          name: Gen1Online ${{ github.ref_name }}
+          body_path: README.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
