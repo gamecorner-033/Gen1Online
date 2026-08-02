@@ -74,9 +74,22 @@ return function(mod)
   -- Battle channel: FIFO, every message delivered (moves cannot be dropped)
   local battleOutChannel = _G.love and _G.love.thread and _G.love.thread.getChannel("gen1mmo_battle_out")
   local battleInChannel  = _G.love and _G.love.thread and _G.love.thread.getChannel("gen1mmo_battle_in")
+  -- Debug channel for thread errors
+  local debugChannel    = _G.love and _G.love.thread and _G.love.thread.getChannel("gen1mmo_debug")
   local bgThread = nil
 
+  -- Capture package paths for the thread
+  local threadPackagePath = package.path
+  local threadPackageCpath = package.cpath
+  -- Escape backslashes to avoid invalid escape sequences in the thread code string literal
+  local escapedPath = string.gsub(threadPackagePath, "\\", "\\\\")
+  local escapedCpath = string.gsub(threadPackageCpath, "\\", "\\\\")
+
   local threadCode = [[
+    -- Inject main thread's package paths (backslashes escaped)
+    package.path = "]] .. escapedPath .. [["
+    package.cpath = "]] .. escapedCpath .. [["
+
     require("love.timer")
     local http   = pcall(require, "socket.http") and require("socket.http") or nil
     local https  = pcall(require, "ssl.https")   and require("ssl.https")   or nil
@@ -87,12 +100,13 @@ return function(mod)
     local inChan        = love.thread.getChannel("gen1mmo_in")
     local battleOutChan = love.thread.getChannel("gen1mmo_battle_out")
     local battleInChan  = love.thread.getChannel("gen1mmo_battle_in")
+    local debugChan     = love.thread.getChannel("gen1mmo_debug")
 
     local function doPost(url, body)
       local resp_body = {}
       local fn = (url:sub(1,5)=="https" and https) and https.request or (http and http.request)
       if fn and ltn12 then
-        pcall(fn, {
+        local ok, err = pcall(fn, {
           url = url, method = "POST",
           headers = { ["Content-Type"]="application/json",
                       ["Content-Length"]=tostring(#body) },
@@ -100,6 +114,13 @@ return function(mod)
           sink   = ltn12.sink.table(resp_body),
           timeout = 1.0
         })
+        if not ok then
+          debugChan:push("HTTP POST error: " .. tostring(err))
+          return ""
+        end
+      else
+        debugChan:push("HTTP libraries not loaded (http=" .. tostring(http) .. ", https=" .. tostring(https) .. ", ltn12=" .. tostring(ltn12) .. ")")
+        return ""
       end
       return table.concat(resp_body)
     end
@@ -152,6 +173,17 @@ return function(mod)
       bgThread = _G.love.thread.newThread(threadCode)
       bgThread:start()
     end)
+  end
+
+  -- Optional: print debug messages from thread (call occasionally in love.update)
+  local function printThreadDebug()
+    if debugChannel then
+      local msg = debugChannel:pop()
+      while msg do
+        print("[Thread Debug] " .. tostring(msg))
+        msg = debugChannel:pop()
+      end
+    end
   end
 
   -- Universal Transport Helper
@@ -1621,6 +1653,9 @@ return function(mod)
 
     -- Continuous frame service for background thread battle messages
     processGlobalThreadMessages(game)
+
+    -- Optional: print any debug messages from the thread
+    printThreadDebug()
   end)
 
   print("[Gen1Online] Asynchronous Threaded 60FPS MMO Mod initialized successfully.")

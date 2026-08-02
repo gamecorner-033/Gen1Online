@@ -321,6 +321,12 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 "msgs": pending_msgs
             })
 
+        # NEW: Clear battle room to avoid stale messages
+        elif action == "clear_battle_room":
+            room_id = str(req.get("roomId"))
+            db["battle_rooms"].pop(room_id, None)
+            self._send_json({"success": True})
+
         elif action == "log_trade_receipt":
             text = req.get("text", "LINK TRADE COMPLETED")
             add_receipt(text)
