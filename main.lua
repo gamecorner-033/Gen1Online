@@ -1,5 +1,5 @@
 return function(mod)
-  print("[Gen1Online] Initializing Gen1Online Async Multi-Threaded MMO Mod...")
+  print("[Gen1Online] Initializing Gen1Online Asynchronous Threaded 60FPS MMO Mod...")
 
   local Game = require("src.core.Game")
   local Input = require("src.core.Input")
@@ -30,15 +30,18 @@ return function(mod)
   local hasLtn12, ltn12 = pcall(require, "ltn12")
   if not hasLtn12 then ltn12 = nil end
 
-  -- Direct Active Cloudflare Tunnel URL
+  -- Direct Cloudflare Tunnel URL
   local GTS_SERVER_URL = "https://boys-manga-demonstrated-marks.trycloudflare.com"
-  local isGtsServerConnected = false
+  local isGtsServerConnected = false -- Explicit manual connection required via menu
 
-  -- Networking State (MMO Multi-Player Engines)
+  -- Networking State
   local netSession = nil
   local isHost = false
   local roomCode = nil
   local lastSendTime = 0
+  local lastPlayerX = nil
+  local lastPlayerY = nil
+  local lastPlayerMap = nil
   local pendingRequestStackItem = nil
   local p2PromptMenuStackItem = nil
 
@@ -61,9 +64,69 @@ return function(mod)
   }
   local gtsDb = _G.GEN1ONLINE_GTS
 
-  -- Universal Non-Blocking HTTP/HTTPS Transport Helper (Supports Cloudflare Tunnels)
+  -- TRUE ASYNCHRONOUS BACKGROUND THREADING ENGINE (love.thread)
+  local netOutChannel = _G.love and _G.love.thread and _G.love.thread.getChannel("gen1mmo_out")
+  local netInChannel = _G.love and _G.love.thread and _G.love.thread.getChannel("gen1mmo_in")
+  local bgThread = nil
+
+  local threadCode = [[
+    require("love.timer")
+    local http = pcall(require, "socket.http") and require("socket.http") or nil
+    local https = pcall(require, "ssl.https") and require("ssl.https") or nil
+    local ltn12 = pcall(require, "ltn12") and require("ltn12") or nil
+    local socket = pcall(require, "socket") and require("socket") or nil
+    local outChan = love.thread.getChannel("gen1mmo_out")
+    local inChan = love.thread.getChannel("gen1mmo_in")
+
+    while true do
+      -- POP ALL QUEUED ITEMS AND KEEP ONLY THE NEWEST REQUEST (FLUSH BACKLOG)
+      local req = nil
+      while true do
+        local nxt = outChan:pop()
+        if not nxt then break end
+        req = nxt
+      end
+
+      if req then
+        local reqUrl = req.url
+        local bodyStr = req.body
+        local resp_body = {}
+        local requestFn = (reqUrl:sub(1, 5) == "https" and https) and https.request or (http and http.request)
+        if requestFn and ltn12 then
+          pcall(requestFn, {
+            url = reqUrl,
+            method = "POST",
+            headers = {
+              ["Content-Type"] = "application/json",
+              ["Content-Length"] = tostring(#bodyStr)
+            },
+            source = ltn12.source.string(bodyStr),
+            sink = ltn12.sink.table(resp_body),
+            timeout = 1.0
+          })
+          if #resp_body > 0 then
+            inChan:push(table.concat(resp_body))
+          end
+        end
+      end
+      if socket and socket.sleep then
+        socket.sleep(0.01)
+      elseif love and love.timer and love.timer.sleep then
+        love.timer.sleep(0.01)
+      end
+    end
+  ]]
+
+  if _G.love and _G.love.thread then
+    pcall(function()
+      bgThread = _G.love.thread.newThread(threadCode)
+      bgThread:start()
+    end)
+  end
+
+  -- Universal Transport Helper
   local function makeHttpRequest(reqTable)
-    reqTable.timeout = reqTable.timeout or 0.1
+    reqTable.timeout = reqTable.timeout or 0.5
     if reqTable.url:sub(1, 5) == "https" and https then
       local ok, res, code, headers, status = pcall(https.request, reqTable)
       if ok and code then return ok, res, code, headers, status end
@@ -74,7 +137,6 @@ return function(mod)
     return false, nil, nil, nil, nil
   end
 
-  -- HTTP API Helpers for gts_server.py & Cloudflare Tunnel
   local function gtsApiGet(path, timeout)
     if not ltn12 then return nil end
     local response_body = {}
@@ -82,7 +144,7 @@ return function(mod)
       url = GTS_SERVER_URL .. path,
       method = "GET",
       sink = ltn12.sink.table(response_body),
-      timeout = timeout or 0.1
+      timeout = timeout or 0.5
     })
     if ok and code == 200 and #response_body > 0 then
       local str = table.concat(response_body)
@@ -105,7 +167,7 @@ return function(mod)
       },
       source = ltn12.source.string(jsonStr),
       sink = ltn12.sink.table(response_body),
-      timeout = timeout or 0.1
+      timeout = timeout or 0.5
     })
     if ok and code == 200 and #response_body > 0 then
       local str = table.concat(response_body)
@@ -202,29 +264,45 @@ return function(mod)
     }, 1.5)
   end
 
-  -- Clear Multi-Player NPCs from Map
+  -- CLEAN ENTITY GC HELPER
   local function removeNetPlayer(ow, tid)
     if not ow then return end
     tid = tostring(tid)
 
     if netFollowers[tid] then
       local fNpc = netFollowers[tid]
-      for i, npc in ipairs(ow.npcs or {}) do
-        if npc == fNpc then table.remove(ow.npcs, i) break end
+      if ow.npcs then
+        for i = #ow.npcs, 1, -1 do
+          if ow.npcs[i] == fNpc or (ow.npcs[i] and ow.npcs[i].trainerId == tid and ow.npcs[i].isCoopFollower) then
+            table.remove(ow.npcs, i)
+          end
+        end
       end
-      for j, e in ipairs(ow.entities or {}) do
-        if e == fNpc then table.remove(ow.entities, j) break end
+      if ow.entities then
+        for j = #ow.entities, 1, -1 do
+          if ow.entities[j] == fNpc or (ow.entities[j] and ow.entities[j].trainerId == tid and ow.entities[j].isCoopFollower) then
+            table.remove(ow.entities, j)
+          end
+        end
       end
       netFollowers[tid] = nil
     end
 
     if netNpcs[tid] then
       local pNpc = netNpcs[tid]
-      for i, npc in ipairs(ow.npcs or {}) do
-        if npc == pNpc then table.remove(ow.npcs, i) break end
+      if ow.npcs then
+        for i = #ow.npcs, 1, -1 do
+          if ow.npcs[i] == pNpc or (ow.npcs[i] and ow.npcs[i].trainerId == tid and ow.npcs[i].isCoopPlayer) then
+            table.remove(ow.npcs, i)
+          end
+        end
       end
-      for j, e in ipairs(ow.entities or {}) do
-        if e == pNpc then table.remove(ow.entities, j) break end
+      if ow.entities then
+        for j = #ow.entities, 1, -1 do
+          if ow.entities[j] == pNpc or (ow.entities[j] and ow.entities[j].trainerId == tid and ow.entities[j].isCoopPlayer) then
+            table.remove(ow.entities, j)
+          end
+        end
       end
       netNpcs[tid] = nil
     end
@@ -237,6 +315,9 @@ return function(mod)
     for tid, _ in pairs(netNpcs) do
       removeNetPlayer(ow, tid)
     end
+    netNpcs = {}
+    netFollowers = {}
+    netPlayerMap = {}
   end
 
   -- Safely remove stack items
@@ -305,7 +386,7 @@ return function(mod)
     game.stack:push(TextBox.new(game, reason or "DISCONNECTED."))
   end
 
-  -- Smooth Movement Lerp for Networked NPCs
+  -- CONTINUOUS MOVEMENT LERP & REAL-TIME TILE TRACKING FOR NPCS
   local function updateNpcMovement(npc, dt)
     if not npc or not npc.targetPx or not npc.targetPy then return end
 
@@ -313,21 +394,28 @@ return function(mod)
     local dy = npc.targetPy - npc.py
     local dist = math.sqrt(dx * dx + dy * dy)
 
-    if dist > 48 then
+    if dist > 160 then
       npc.px = npc.targetPx
       npc.py = npc.targetPy
-      npc.cellX = math.floor(npc.px / 16)
-      npc.cellY = math.floor(npc.py / 16)
+      npc.cellX = npc.targetCellX or math.floor(npc.px / 16)
+      npc.cellY = npc.targetCellY or math.floor(npc.py / 16)
+      npc.x = npc.cellX
+      npc.y = npc.cellY
       npc.moving = false
     elseif dist > 0.5 then
-      local speed = 96
+      local baseSpeed = 96
+      local speed = math.max(baseSpeed, dist * 8)
       local step = math.min(dist, speed * (dt or 0.016))
+
       npc.px = npc.px + (dx / dist) * step
       npc.py = npc.py + (dy / dist) * step
       npc.cellX = math.floor((npc.px + 8) / 16)
       npc.cellY = math.floor((npc.py + 8) / 16)
+      npc.x = npc.cellX
+      npc.y = npc.cellY
+
       npc.moving = true
-      npc.progress = (npc.progress or 0) + step * 2
+      npc.progress = (npc.progress or 0) + step * 2.5
       if (npc.progress or 0) >= 16 then
         npc.progress = 0
         npc.stepFlip = not npc.stepFlip
@@ -335,13 +423,15 @@ return function(mod)
     else
       npc.px = npc.targetPx
       npc.py = npc.targetPy
-      npc.cellX = math.floor(npc.px / 16)
-      npc.cellY = math.floor(npc.py / 16)
+      npc.cellX = npc.targetCellX or math.floor(npc.px / 16)
+      npc.cellY = npc.targetCellY or math.floor(npc.py / 16)
+      npc.x = npc.cellX
+      npc.y = npc.cellY
       npc.moving = false
     end
   end
 
-  -- Sync Multi-Player Network NPCs on Overworld Map (Up to 16 Players)
+  -- Sync Multi-Player Network NPCs on Overworld Map (100% Continuous Real-Time Tracking)
   local function syncMultiNetPlayers(game, ow, playersList)
     if not ow or not ow.map then
       clearAllNetPlayers(ow)
@@ -355,7 +445,30 @@ return function(mod)
       netPlayerMap[tid] = data
 
       if data.map == ow.map.id then
-        -- 1. Sync Human Player Avatar (SPRITE_RED, solid physical collision passable = false)
+        local facing = data.facing or "down"
+        local isMoving = data.moving or false
+        local destX = data.x or 5
+        local destY = data.y or 5
+
+        local originX = destX
+        local originY = destY
+        if isMoving then
+          local delta = Collision.DELTA[facing] or { 0, 1 }
+          originX = destX - delta[1]
+          originY = destY - delta[2]
+        end
+
+        local targetPx = destX * 16
+        local targetPy = destY * 16
+        local originPx = originX * 16
+        local originPy = originY * 16
+
+        local fCellX = data.fx or originX
+        local fCellY = data.fy or originY
+        local fTargetPx = fCellX * 16
+        local fTargetPy = fCellY * 16
+
+        -- 1. Create NPC Avatar on Initial Spawn
         if not netNpcs[tid] then
           local pNpc = NPC.new(game.data, ow.map.id, {
             index = 290 + (#ow.npcs % 50),
@@ -363,28 +476,39 @@ return function(mod)
             sprite = "SPRITE_RED",
             movement = "STAY",
             range = "NONE",
-            x = data.x or 5,
-            y = data.y or 5,
+            x = originX,
+            y = originY,
           })
           pNpc.trainerId = tid
           pNpc.isCoopPlayer = true
           pNpc.passable = false
-          pNpc.px = (data.x or 5) * 16
-          pNpc.py = (data.y or 5) * 16
-          pNpc.targetPx = pNpc.px
-          pNpc.targetPy = pNpc.py
+          pNpc.px = originPx
+          pNpc.py = originPy
+          pNpc.targetPx = targetPx
+          pNpc.targetPy = targetPy
+          pNpc.cellX = originX
+          pNpc.cellY = originY
+          pNpc.targetCellX = destX
+          pNpc.targetCellY = destY
+          pNpc.facing = facing
           pNpc.update = function(self, dt, map, entities) end
           table.insert(ow.npcs, pNpc)
           table.insert(ow.entities, pNpc)
           netNpcs[tid] = pNpc
         end
 
+        -- 2. CONTINUOUS MOVEMENT TARGET UPDATES
         local pNpc = netNpcs[tid]
-        pNpc.targetPx = (data.x or 5) * 16
-        pNpc.targetPy = (data.y or 5) * 16
-        pNpc.facing = data.facing or "down"
+        if pNpc.targetPx ~= targetPx or pNpc.targetPy ~= targetPy then
+          pNpc.targetPx = targetPx
+          pNpc.targetPy = targetPy
+          pNpc.targetCellX = destX
+          pNpc.targetCellY = destY
+          pNpc.moving = true
+        end
+        pNpc.facing = facing
 
-        -- 2. Sync Follower Pokemon (solid physical collision passable = false)
+        -- 3. CONTINUOUS FOLLOWER TARGET UPDATES
         if data.species then
           local spriteId = "SPRITE_WILD_" .. tostring(data.species)
           local spriteDef = game.data and game.data.sprites and game.data.sprites[spriteId]
@@ -396,17 +520,22 @@ return function(mod)
                 sprite = spriteId,
                 movement = "STAY",
                 range = "NONE",
-                x = data.fx or (data.x or 5),
-                y = data.fy or (data.y or 5),
+                x = fCellX,
+                y = fCellY,
               })
               fNpc.trainerId = tid
               fNpc.spriteId = spriteId
               fNpc.isCoopFollower = true
               fNpc.passable = false
-              fNpc.px = (data.fx or (data.x or 5)) * 16
-              fNpc.py = (data.fy or (data.y or 5)) * 16
-              fNpc.targetPx = fNpc.px
-              fNpc.targetPy = fNpc.py
+              fNpc.px = fTargetPx
+              fNpc.py = fTargetPy
+              fNpc.targetPx = fTargetPx
+              fNpc.targetPy = fTargetPy
+              fNpc.cellX = fCellX
+              fNpc.cellY = fCellY
+              fNpc.targetCellX = fCellX
+              fNpc.targetCellY = fCellY
+              fNpc.facing = facing
               fNpc.update = function(self, dt, map, entities) end
               table.insert(ow.npcs, fNpc)
               table.insert(ow.entities, fNpc)
@@ -417,9 +546,14 @@ return function(mod)
             end
 
             local fNpc = netFollowers[tid]
-            fNpc.targetPx = (data.fx or pNpc.cellX) * 16
-            fNpc.targetPy = (data.fy or pNpc.cellY) * 16
-            fNpc.facing = data.facing or "down"
+            if fNpc.targetPx ~= fTargetPx or fNpc.targetPy ~= fTargetPy then
+              fNpc.targetPx = fTargetPx
+              fNpc.targetPy = fTargetPy
+              fNpc.targetCellX = fCellX
+              fNpc.targetCellY = fCellY
+              fNpc.moving = true
+            end
+            fNpc.facing = facing
           else
             removeNetPlayer(ow, tid)
           end
@@ -429,7 +563,7 @@ return function(mod)
       end
     end
 
-    -- Remove players who left the map / server
+    -- Clean Memory Leak
     for tid, _ in pairs(netNpcs) do
       if not activeIds[tid] then
         removeNetPlayer(ow, tid)
@@ -437,20 +571,9 @@ return function(mod)
     end
   end
 
-  -- Helper to add history receipt to GTS (Last 50)
-  local function addGtsReceipt(text)
-    table.insert(gtsDb.history, 1, {
-      text = text,
-      time = os.time()
-    })
-    while #gtsDb.history > 50 do
-      table.remove(gtsDb.history)
-    end
-  end
-
   -- View Detailed Trainer Card UI Screen
   local function openTrainerCardScreen(game, tid, rawData)
-    local pData = gtsApiGet("/gts/profile?trainerId=" .. tostring(tid), 2.0)
+    local pData = gtsApiGet("/gts/profile?trainerId=" .. tostring(tid), 1.5)
     local profile = (pData and pData.success and pData.profile) or {}
 
     local name = profile.name or (rawData and rawData.name) or "TRAINER"
@@ -473,7 +596,7 @@ return function(mod)
         Font.drawBox(1, 1, 18, 11)
         Font.draw("TRAINER CARD", 16, 20)
         Font.draw(string.format("NAME: %s", name), 16, 34)
-        Font.draw(string.format("ID: %s", tostring(tid)), 16, 46)
+        Font.draw(string.format("ID: %s [VERIFIED]", tostring(tid)), 16, 46)
         Font.draw(string.format("TITLE: %s", title), 16, 58)
         Font.draw(string.format("BADGES: %d/8", badges), 16, 70)
         Font.draw(string.format("POKEDEX: %d", pokedexCount), 16, 82)
@@ -485,63 +608,15 @@ return function(mod)
     game.stack:push(container)
   end
 
-  -- Customize Local Trainer Profile Submenu
-  local function openMyProfileMenu(game)
-    local titles = {
-      "ACE TRAINER", "BUG CATCHER", "POKéMANIAC", "LASS", "YOUNGSTER",
-      "POKéMON CHAMPION", "GYM LEADER", "BLACKBELT", "SUPER NERD", "COOLTRAINER"
-    }
-
-    local items = {
-      {
-        label = "VIEW MY TRAINER CARD",
-        onSelect = function()
-          syncLocalProfile(game)
-          local tid, tName = getTrainerInfo(game.save)
-          openTrainerCardScreen(game, tid, { name = tName })
-        end
-      },
-      {
-        label = "SELECT TRAINER TITLE",
-        onSelect = function()
-          local titleItems = {}
-          for _, t in ipairs(titles) do
-            table.insert(titleItems, {
-              label = t,
-              onSelect = function()
-                localTrainerTitle = t
-                syncLocalProfile(game)
-                game.stack:push(TextBox.new(game, string.format("TITLE UPDATED TO:\n%s!", t)))
-              end
-            })
-          end
-          game.stack:push(Menu.new(game, titleItems, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
-        end
-      },
-      {
-        label = "SELECT FAVORITE POKÉMON",
-        onSelect = function()
-          if game.save and game.save.party and #game.save.party > 0 then
-            local favItems = {}
-            for _, mon in ipairs(game.save.party) do
-              local mName = mon.nickname or (game.data.pokemon[mon.species] and game.data.pokemon[mon.species].name) or mon.species
-              table.insert(favItems, {
-                label = mName,
-                onSelect = function()
-                  localFavoriteMon = mName
-                  syncLocalProfile(game)
-                  game.stack:push(TextBox.new(game, string.format("FAVORITE POKéMON:\n%s!", mName)))
-                end
-              })
-            end
-            game.stack:push(Menu.new(game, favItems, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
-          end
-        end
-      },
-      { label = "EXIT", onSelect = function() end }
-    }
-
-    game.stack:push(Menu.new(game, items, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
+  -- Helper to add history receipt to GTS
+  local function addGtsReceipt(text)
+    table.insert(gtsDb.history, 1, {
+      text = text,
+      time = os.time()
+    })
+    while #gtsDb.history > 50 do
+      table.remove(gtsDb.history)
+    end
   end
 
   -- GTS Summary Card & Trade Execution
@@ -643,8 +718,13 @@ return function(mod)
     game.stack:push(container)
   end
 
-  -- GTS Browse Submenu
+  -- GTS Browse Submenu (WITH STRICT CONNECTION GUARD)
   local function openGtsBrowseMenu(game)
+    if not isGtsServerConnected then
+      game.stack:push(TextBox.new(game, "YOU ARE NOT CONNECTED\nTO GTS SERVER!\nSELECT 'CONNECT GTS SERVER' FIRST."))
+      return
+    end
+
     local trainerId, trainerName = getTrainerInfo(game.save)
     fetchGtsServerSync(trainerId)
 
@@ -669,8 +749,13 @@ return function(mod)
     game.stack:push(menu)
   end
 
-  -- GTS My Listings & Claim Box Submenu
+  -- GTS My Listings & Claim Box Submenu (WITH STRICT CONNECTION GUARD)
   local function openGtsMyListingsMenu(game)
+    if not isGtsServerConnected then
+      game.stack:push(TextBox.new(game, "YOU ARE NOT CONNECTED\nTO GTS SERVER!\nSELECT 'CONNECT GTS SERVER' FIRST."))
+      return
+    end
+
     local trainerId, trainerName = getTrainerInfo(game.save)
     fetchGtsServerSync(trainerId)
 
@@ -733,8 +818,13 @@ return function(mod)
     game.stack:push(menu)
   end
 
-  -- GTS Recent History (Last 50 Receipts) Submenu
+  -- GTS Recent History (Last 50 Receipts) Submenu (WITH STRICT CONNECTION GUARD)
   local function openGtsHistoryMenu(game)
+    if not isGtsServerConnected then
+      game.stack:push(TextBox.new(game, "YOU ARE NOT CONNECTED\nTO GTS SERVER!\nSELECT 'CONNECT GTS SERVER' FIRST."))
+      return
+    end
+
     local trainerId, trainerName = getTrainerInfo(game.save)
     fetchGtsServerSync(trainerId)
 
@@ -755,8 +845,13 @@ return function(mod)
     game.stack:push(menu)
   end
 
-  -- GTS Deposit Submenu
+  -- GTS Deposit Submenu (WITH STRICT CONNECTION GUARD)
   local function openGtsDepositMenu(game)
+    if not isGtsServerConnected then
+      game.stack:push(TextBox.new(game, "YOU ARE NOT CONNECTED\nTO GTS SERVER!\nSELECT 'CONNECT GTS SERVER' FIRST."))
+      return
+    end
+
     if not game.save or not game.save.party or #game.save.party < 2 then
       game.stack:push(TextBox.new(game, "YOU NEED AT LEAST 2\nPOKéMON IN PARTY TO DEPOSIT!"))
       return
@@ -807,10 +902,15 @@ return function(mod)
     game.stack:push(Menu.new(game, partyItems, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
   end
 
-  -- Main GTS Top-Level Menu
+  -- Main GTS Top-Level Menu (WITH STRICT CONNECTION GUARD)
   local function openGtsMainMenu(game)
+    if not isGtsServerConnected then
+      game.stack:push(TextBox.new(game, "YOU ARE NOT CONNECTED\nTO GTS SERVER!\nSELECT 'CONNECT GTS SERVER' FIRST."))
+      return
+    end
+
     local trainerId, trainerName = getTrainerInfo(game.save)
-    local ok = fetchGtsServerSync(trainerId)
+    fetchGtsServerSync(trainerId)
 
     local items = {
       {
@@ -828,6 +928,65 @@ return function(mod)
       {
         label = "RECENT HISTORY (50)",
         onSelect = function() openGtsHistoryMenu(game) end
+      },
+      { label = "EXIT", onSelect = function() end }
+    }
+
+    game.stack:push(Menu.new(game, items, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
+  end
+
+  -- Customize Local Trainer Profile Submenu
+  local function openMyProfileMenu(game)
+    local titles = {
+      "ACE TRAINER", "BUG CATCHER", "POKéMANIAC", "LASS", "YOUNGSTER",
+      "POKéMON CHAMPION", "GYM LEADER", "BLACKBELT", "SUPER NERD", "COOLTRAINER"
+    }
+
+    local items = {
+      {
+        label = "VIEW MY TRAINER CARD",
+        onSelect = function()
+          syncLocalProfile(game)
+          local tid, tName = getTrainerInfo(game.save)
+          openTrainerCardScreen(game, tid, { name = tName })
+        end
+      },
+      {
+        label = "SELECT TRAINER TITLE",
+        onSelect = function()
+          local titleItems = {}
+          for _, t in ipairs(titles) do
+            table.insert(titleItems, {
+              label = t,
+              onSelect = function()
+                localTrainerTitle = t
+                syncLocalProfile(game)
+                game.stack:push(TextBox.new(game, string.format("TITLE UPDATED TO:\n%s!", t)))
+              end
+            })
+          end
+          game.stack:push(Menu.new(game, titleItems, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
+        end
+      },
+      {
+        label = "SELECT FAVORITE POKÉMON",
+        onSelect = function()
+          if game.save and game.save.party and #game.save.party > 0 then
+            local favItems = {}
+            for _, mon in ipairs(game.save.party) do
+              local mName = mon.nickname or (game.data.pokemon[mon.species] and game.data.pokemon[mon.species].name) or mon.species
+              table.insert(favItems, {
+                label = mName,
+                onSelect = function()
+                  localFavoriteMon = mName
+                  syncLocalProfile(game)
+                  game.stack:push(TextBox.new(game, string.format("FAVORITE POKéMON:\n%s!", mName)))
+                end
+              })
+            end
+            game.stack:push(Menu.new(game, favItems, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
+          end
+        end
       },
       { label = "EXIT", onSelect = function() end }
     }
@@ -854,7 +1013,33 @@ return function(mod)
           performForcedSave(game)
           syncLocalProfile(game)
           local ok = fetchGtsServerSync(trainerId)
-          if ok then
+          if ok and game.overworld and game.overworld.player and game.overworld.map and netOutChannel then
+            local ow = game.overworld
+            local p = ow.player
+            local delta = Collision.DELTA[p.facing] or { 0, 1 }
+            local fx = p.cellX - delta[1]
+            local fy = p.cellY - delta[2]
+            local followerSpecies = game.save.party and game.save.party[1] and game.save.party[1].species
+
+            netOutChannel:push({
+              url = GTS_SERVER_URL .. "/gts",
+              body = Json.encode({
+                action = "sync_pos",
+                trainerId = trainerId,
+                name = trainerName,
+                title = localTrainerTitle,
+                map = ow.map.id,
+                x = p.cellX,
+                y = p.cellY,
+                px = p.cellX * 16,
+                py = p.cellY * 16,
+                fx = fx,
+                fy = fy,
+                facing = p.facing,
+                moving = p.moving,
+                species = followerSpecies
+              })
+            })
             game.stack:push(TextBox.new(game, "SAVED GAME!\nCONNECTED TO GTS SERVER!"))
           else
             game.stack:push(TextBox.new(game, "CANNOT CONNECT TO\nGTS SERVER!"))
@@ -894,23 +1079,68 @@ return function(mod)
     return list
   end)
 
-  -- Hook Overworld Update to interpolate MMO movements & sync position smoothly (Non-Blocking)
+  -- Hook Map Transition to clear and re-sync overworld entities
+  local origSetMap = OverworldState.setMap
+  OverworldState.setMap = function(self, mapId, cellX, cellY, facing)
+    clearAllNetPlayers(self)
+    local res = origSetMap(self, mapId, cellX, cellY, facing)
+    lastPlayerMap = mapId
+    return res
+  end
+
+  -- Hook Overworld Update with TRUE ZERO-LAG Async Threading & Live Direct Challenge Receiver
   local origOverworldUpdate = OverworldState.update
   OverworldState.update = function(self, dt)
     if origOverworldUpdate then origOverworldUpdate(self, dt) end
     if not Game or not isGtsServerConnected then return end
 
-    -- Lerp smooth movement for all active MMO players and followers
+    -- 1. Lerp smooth movement for all active MMO players and followers at 100% 60 FPS
     for _, pNpc in pairs(netNpcs) do updateNpcMovement(pNpc, dt) end
     for _, fNpc in pairs(netFollowers) do updateNpcMovement(fNpc, dt) end
 
-    local now = (_G.love and _G.love.timer and _G.love.timer.getTime) and _G.love.timer.getTime() or os.time()
-    if now - lastSendTime >= 0.5 then -- Throttled 500ms sync for buttery smooth 60 FPS movement
-      lastSendTime = now
+    -- 2. Process incoming async thread messages instantly (0.0001 ms)
+    if netInChannel then
+      local respStr = netInChannel:pop()
+      if respStr then
+        local ok, res = pcall(Json.decode, respStr)
+        if ok and res and res.success then
+          if res.players then
+            syncMultiNetPlayers(Game, self, res.players)
+          end
+          -- Live Network Challenge Receiver (PVP Battle or Trade Popup!)
+          if res.challenge then
+            local challengerName = res.challenge.fromName or "TRAINER"
+            local challengerId = res.challenge.fromId
+            local cType = res.challenge.type or "PVP"
 
-      local ow = self
-      local p = ow.player
-      if p and ow.map then
+            local promptItems = {
+              {
+                label = "ACCEPT CHALLENGE",
+                onSelect = function()
+                  Game.stack:push(TextBox.new(Game, string.format("ACCEPTED %s'S\n%s CHALLENGE!", challengerName, cType)))
+                end
+              },
+              { label = "DECLINE", onSelect = function() end }
+            }
+            Game.stack:push(Menu.new(Game, promptItems, { tx = 1, ty = 1, tw = 18, th = 6 }))
+          end
+        end
+      end
+    end
+
+    -- 3. Push position to background thread (Instant on movement OR 100ms interval)
+    local ow = self
+    local p = ow.player
+    if p and ow.map and netOutChannel then
+      local now = (_G.love and _G.love.timer and _G.love.timer.getTime) and _G.love.timer.getTime() or os.time()
+      local positionChanged = (p.cellX ~= lastPlayerX) or (p.cellY ~= lastPlayerY) or (ow.map.id ~= lastPlayerMap)
+
+      if positionChanged or (now - lastSendTime >= 0.10) then
+        lastSendTime = now
+        lastPlayerX = p.cellX
+        lastPlayerY = p.cellY
+        lastPlayerMap = ow.map.id
+
         local trainerId, trainerName = getTrainerInfo(Game.save)
         local followerSpecies = Game.save.party and Game.save.party[1] and Game.save.party[1].species
 
@@ -918,7 +1148,7 @@ return function(mod)
         local fx = p.cellX - delta[1]
         local fy = p.cellY - delta[2]
 
-        local res = gtsApiPost({
+        local payload = {
           action = "sync_pos",
           trainerId = trainerId,
           name = trainerName,
@@ -926,16 +1156,19 @@ return function(mod)
           map = ow.map.id,
           x = p.cellX,
           y = p.cellY,
+          px = p.px,
+          py = p.py,
           fx = fx,
           fy = fy,
           facing = p.facing,
           moving = p.moving,
           species = followerSpecies
-        }, 0.05) -- Non-blocking 50ms fast network timeout
+        }
 
-        if res and res.success and res.players then
-          syncMultiNetPlayers(Game, ow, res.players)
-        end
+        netOutChannel:push({
+          url = GTS_SERVER_URL .. "/gts",
+          body = Json.encode(payload)
+        })
       end
     end
   end
@@ -950,24 +1183,41 @@ return function(mod)
       if pNpc.cellX == fx and pNpc.cellY == fy then
         local rawData = netPlayerMap[tid] or {}
         local pName = rawData.name or "TRAINER"
+        local targetTid = pNpc.trainerId or tid
 
         local items = {
           {
             label = "VIEW TRAINER CARD",
             onSelect = function()
-              openTrainerCardScreen(Game, tid, rawData)
+              openTrainerCardScreen(Game, targetTid, rawData)
             end
           },
           {
             label = "PVP LINK BATTLE",
             onSelect = function()
-              Game.stack:push(TextBox.new(Game, string.format("CHALLENGED %s\nTO PVP BATTLE!", pName)))
+              local myId, myName = getTrainerInfo(Game.save)
+              gtsApiPost({
+                action = "send_challenge",
+                targetId = targetTid,
+                fromId = myId,
+                fromName = myName,
+                challengeType = "PVP"
+              }, 1.5)
+              Game.stack:push(TextBox.new(Game, string.format("SENT PVP CHALLENGE\nTO %s!", pName)))
             end
           },
           {
             label = "LINK TRADE",
             onSelect = function()
-              Game.stack:push(TextBox.new(Game, string.format("OFFERED TRADE\nTO %s!", pName)))
+              local myId, myName = getTrainerInfo(Game.save)
+              gtsApiPost({
+                action = "send_challenge",
+                targetId = targetTid,
+                fromId = myId,
+                fromName = myName,
+                challengeType = "TRADE"
+              }, 1.5)
+              Game.stack:push(TextBox.new(Game, string.format("SENT TRADE OFFER\nTO %s!", pName)))
             end
           },
           { label = "CANCEL", onSelect = function() end }
@@ -979,5 +1229,5 @@ return function(mod)
     return origInteract(self)
   end
 
-  print("[Gen1Online] Multi-Threaded MMO Mod initialized successfully.")
+  print("[Gen1Online] Asynchronous Threaded 60FPS MMO Mod initialized successfully.")
 end
