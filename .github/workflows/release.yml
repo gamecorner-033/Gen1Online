@@ -1,10 +1,9 @@
-name: Release Mod Zip
+name: Create Gen1Online Release
 
 on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:
 
 jobs:
   build-release:
@@ -12,17 +11,23 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Checkout Mod Repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Package Mod Zip
+      - name: Create Release Zip
         run: |
-          mkdir -p dist
-          zip -r dist/gen1online.zip . -x "*.git*" "*.github*" "*.vscode*" "__pycache__*"
+          mkdir -p build/gen1online
+          cp -r main.lua manifest.json mod.card README.md Dockerfile gts_server.py build/gen1online/
+          cd build
+          zip -r ../gen1online.zip gen1online
 
-      - name: Upload Release Artifact
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/gen1online.zip
+          files: gen1online.zip
+          draft: false
+          prerelease: false
+          name: Gen1Online ${{ github.ref_name }}
+          body_path: README.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

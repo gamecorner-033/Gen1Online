@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Gen1Online - Cloud-Ready Self-Cleansing Global Trade Station (GTS) Server
+Gen1Online - Cloud-Ready Multi-Threaded Self-Cleansing GTS & MMO Overworld Server
 Features:
-- Self-cleansing auto-purge for listings older than 30 days
-- Claim box cleanup for items older than 60 days
-- Rate limiting per IP (60 requests/minute)
-- Cloud deployment readiness (Render, Railway, Heroku, Docker)
+- Multi-threaded ThreadingTCPServer for instant simultaneous multi-player connections
+- Multi-player 16-player overworld position sync API per map instance
+- Persistent Trainer Profiles (Trainer Card, Badges, Pokédex count, PvP wins, GTS trades, custom titles)
+- Self-cleansing auto-purge for listings > 30 days old and inactive players > 10 seconds
+- Rate limiting per IP (120 requests/minute)
 """
 
 import http.server
@@ -13,21 +14,22 @@ import socketserver
 import json
 import os
 import time
-import sys
 
-# Bind to Cloud PORT or default 7779
 PORT = int(os.environ.get("PORT", 7779))
 DB_FILE = os.environ.get("GTS_DB_PATH", os.path.join(os.path.dirname(__file__), "gts_database.json"))
 
 # 30 days TTL for listings, 60 days for claim box
 LISTING_TTL_SECONDS = 30 * 86400
 CLAIM_TTL_SECONDS = 60 * 86400
+PLAYER_TIMEOUT_SECONDS = 10  # Remove idle players after 10 seconds
 
 db = {
-    "listings": {},     # listingId -> listing object
-    "user_counts": {},  # trainerId -> active deposit count
-    "history": [],      # array of last 50 receipts
-    "claim_boxes": {},  # trainerId -> array of traded mons
+    "listings": {},       # listingId -> listing object
+    "user_counts": {},    # trainerId -> active deposit count
+    "history": [],        # array of last 50 receipts
+    "claim_boxes": {},    # trainerId -> array of traded mons
+    "profiles": {},       # trainerId -> persistent profile object
+    "active_players": {}, # trainerId -> live position & state object
     "next_id": 1001
 }
 
@@ -38,20 +40,21 @@ def load_db():
     if os.path.exists(DB_FILE):
         try:
             with open(DB_FILE, "r", encoding="utf-8") as f:
-                db = json.load(f)
-            print(f"[GTS Cloud Server] Database loaded: {len(db.get('listings', {}))} active listings.")
+                loaded = json.load(f)
+                for k, v in loaded.items():
+                    db[k] = v
         except Exception as e:
             print(f"[GTS Cloud Server] Error loading database: {e}")
 
 def save_db():
     try:
+        save_copy = {k: v for k, v in db.items() if k != "active_players"}
         with open(DB_FILE, "w", encoding="utf-8") as f:
-            json.dump(db, f, indent=2)
+            json.dump(save_copy, f, indent=2)
     except Exception as e:
         print(f"[GTS Cloud Server] Error saving database: {e}")
 
 def self_clean_db():
-    """Self-cleansing engine: Purges listings older than 30 days and claim items older than 60 days."""
     now = int(time.time())
     purged_listings = 0
     purged_claims = 0
@@ -81,6 +84,11 @@ def self_clean_db():
                 purged_claims += 1
         db["claim_boxes"][trainer_id] = valid_claims
 
+    # 3. Purge inactive online players (> 10 seconds timeout)
+    for tid, pdata in list(db.get("active_players", {}).items()):
+        if now - pdata.get("timestamp", 0) > PLAYER_TIMEOUT_SECONDS:
+            db["active_players"].pop(tid, None)
+
     if purged_listings > 0 or purged_claims > 0:
         print(f"[Self-Cleansing Engine] Purged {purged_listings} expired listings and {purged_claims} old claims.")
         save_db()
@@ -97,12 +105,21 @@ def check_rate_limit(ip):
     if ip not in rate_limits:
         rate_limits[ip] = []
     rate_limits[ip] = [t for t in rate_limits[ip] if now - t < 60]
-    if len(rate_limits[ip]) >= 60:
+    if len(rate_limits[ip]) >= 120:
         return False
     rate_limits[ip].append(now)
     return True
 
+# Multi-Threaded HTTP Server Class for High Throughput
+class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
 class GTSHandler(http.server.BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        # Silence routine request logging for high performance
+        return
+
     def _send_json(self, data, status=200):
         body = json.dumps(data).encode("utf-8")
         self.send_response(status)
@@ -127,6 +144,18 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 "status": "ONLINE",
                 "listings": db["listings"],
                 "history": db["history"]
+            })
+        elif self.path.startswith("/gts/profile"):
+            trainer_id = None
+            if "?" in self.path:
+                params = self.path.split("?")[1]
+                for p in params.split("&"):
+                    if p.startswith("trainerId="):
+                        trainer_id = p.split("=")[1]
+            profile = db["profiles"].get(str(trainer_id), {})
+            self._send_json({
+                "success": True,
+                "profile": profile
             })
         elif self.path.startswith("/gts/claims"):
             trainer_id = None
@@ -163,8 +192,73 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
             return
 
         action = req.get("action")
+        now = int(time.time())
 
-        if action == "deposit":
+        # 1. MMO Overworld Position Sync Endpoint
+        if action == "sync_pos":
+            trainer_id = str(req.get("trainerId"))
+            map_id = req.get("map")
+
+            player_entry = {
+                "trainerId": trainer_id,
+                "name": req.get("name", "TRAINER"),
+                "map": map_id,
+                "x": req.get("x", 5),
+                "y": req.get("y", 5),
+                "fx": req.get("fx", 5),
+                "fy": req.get("fy", 5),
+                "facing": req.get("facing", "down"),
+                "moving": req.get("moving", False),
+                "species": req.get("species"),
+                "title": req.get("title", "ROOKIE"),
+                "timestamp": now
+            }
+
+            db["active_players"][trainer_id] = player_entry
+
+            # Filter active players on the same map (up to 16 players)
+            map_players = []
+            for tid, p in db["active_players"].items():
+                if tid != trainer_id and p.get("map") == map_id:
+                    map_players.append(p)
+                    if len(map_players) >= 16:
+                        break
+
+            self._send_json({
+                "success": True,
+                "players": map_players
+            })
+
+        # 2. Update Trainer Profile Endpoint
+        elif action == "update_profile":
+            trainer_id = str(req.get("trainerId"))
+            profile = db["profiles"].get(trainer_id, {
+                "trainerId": trainer_id,
+                "name": req.get("name", "TRAINER"),
+                "title": "POKéMON TRAINER",
+                "badges": 0,
+                "pokedexCount": 0,
+                "gtsTrades": 0,
+                "pvpWins": 0,
+                "favoriteMon": "PIKACHU",
+                "timestamp": now
+            })
+
+            profile["name"] = req.get("name", profile.get("name"))
+            if "title" in req: profile["title"] = req["title"]
+            if "badges" in req: profile["badges"] = req["badges"]
+            if "pokedexCount" in req: profile["pokedexCount"] = req["pokedexCount"]
+            if "gtsTrades" in req: profile["gtsTrades"] = (profile.get("gtsTrades", 0) + req["gtsTrades"])
+            if "pvpWins" in req: profile["pvpWins"] = (profile.get("pvpWins", 0) + req["pvpWins"])
+            if "favoriteMon" in req: profile["favoriteMon"] = req["favoriteMon"]
+            profile["timestamp"] = now
+
+            db["profiles"][trainer_id] = profile
+            save_db()
+
+            self._send_json({"success": True, "profile": profile})
+
+        elif action == "deposit":
             trainer_id = str(req.get("trainerId"))
             trainer_name = req.get("trainerName", "TRAINER")
             offered_mon = req.get("offeredMon")
@@ -184,7 +278,7 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 "trainerName": trainer_name,
                 "offeredMon": offered_mon,
                 "wanted": wanted,
-                "timestamp": int(time.time())
+                "timestamp": now
             }
 
             db["listings"][list_id] = listing
@@ -221,7 +315,7 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 "fromName": buyer_name,
                 "fromId": buyer_id,
                 "originalOffered": off_name,
-                "timestamp": int(time.time())
+                "timestamp": now
             })
 
             add_receipt(f"{buyer_name} TRADED {sent_name} TO {listing['trainerName']} FOR {off_name}")
@@ -261,11 +355,12 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
 def run_server():
     load_db()
     self_clean_db()
-    with socketserver.TCPServer(("", PORT), GTSHandler) as httpd:
+    with ThreadedTCPServer(("", PORT), GTSHandler) as httpd:
         print(f"======================================================")
-        print(f"  Gen1Online Cloud GTS Server Running on Port {PORT}")
+        print(f"  Gen1Online Multi-Threaded GTS & MMO Server (Port {PORT})")
+        print(f"  Multi-Threading: ENABLED (High Throughput & Concurrency)")
         print(f"  Database Path: {DB_FILE}")
-        print(f"  Self-Cleansing TTL: 30 Days (Listings), 60 Days (Claims)")
+        print(f"  Overworld Limit: 16 Players Per Map Instance")
         print(f"======================================================")
         try:
             httpd.serve_forever()
