@@ -452,7 +452,7 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
 def run_server():
     load_db()
     self_clean_db()
-    with ThreadedTCPServer(("", PORT), GTSHandler) as httpd:
+    with ThreadedTCPServer(("127.0.0.1", PORT), GTSHandler) as httpd:
         print(f"======================================================")
         print(f"  Gen1Online Fast High-Performance Server (Port {PORT})")
         print(f"  Live Network Challenges: ENABLED (PVP & Link Trade)")

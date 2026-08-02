@@ -1,0 +1,102 @@
+{
+  "listings": {},
+  "user_counts": {
+    "63884": 0
+  },
+  "history": [
+    {
+      "text": "AAAAAAA TRADED PIKACHU TO BK FOR CHARMANDER",
+      "time": 1785683510
+    },
+    {
+      "text": "BK (ID 63884) DEPOSITED CHARMANDER LV50",
+      "time": 1785682536
+    }
+  ],
+  "claim_boxes": {
+    "63884": [
+      {
+        "mon": {
+          "otId": 45799,
+          "dvs": {
+            "special": 2,
+            "defense": 11,
+            "hp": 6,
+            "attack": 2,
+            "speed": 1
+          },
+          "statExp": {
+            "special": 0,
+            "defense": 0,
+            "hp": 0,
+            "attack": 0,
+            "speed": 0
+          },
+          "level": 20,
+          "moves": [
+            {
+              "pp": 30,
+              "id": "THUNDERSHOCK"
+            },
+            {
+              "pp": 40,
+              "id": "GROWL"
+            },
+            {
+              "pp": 20,
+              "id": "THUNDER_WAVE"
+            },
+            {
+              "pp": 30,
+              "id": "QUICK_ATTACK"
+            }
+          ],
+          "species": "PIKACHU",
+          "exp": 8000,
+          "hp": 46,
+          "ot": "AAAAAAA"
+        },
+        "fromName": "AAAAAAA",
+        "fromId": "45799",
+        "originalOffered": "CHARMANDER",
+        "timestamp": 1785683510
+      }
+    ]
+  },
+  "profiles": {
+    "63884": {
+      "trainerId": "63884",
+      "name": "BK",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 4,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1785686364
+    },
+    "45799": {
+      "trainerId": "45799",
+      "name": "Paul",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 1,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1785683706
+    },
+    "38673": {
+      "trainerId": "38673",
+      "name": "THOMAS",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 23,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1785683485
+    }
+  },
+  "next_id": 1002
+}

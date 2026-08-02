@@ -31,7 +31,7 @@ return function(mod)
   if not hasLtn12 then ltn12 = nil end
 
   -- Direct Cloudflare Tunnel URL
-  local GTS_SERVER_URL = "https://boys-manga-demonstrated-marks.trycloudflare.com"
+  local GTS_SERVER_URL = "https://environments-ion-statutes-miami.trycloudflare.com"
   local isGtsServerConnected = false -- Explicit manual connection required via menu
 
   -- Networking State
