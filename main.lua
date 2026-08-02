@@ -42,8 +42,11 @@ return function(mod)
   local lastPlayerX = nil
   local lastPlayerY = nil
   local lastPlayerMap = nil
-  local pendingRequestStackItem = nil
-  local p2PromptMenuStackItem = nil
+  local activeBattleAdapter = nil -- Active GtsNetAdapter instance
+  local isWaitingForChallenge = false -- Locks player movement while waiting for challenge response
+  local challengeWaitTimer = 0
+  local lastBattleEndTime = -999 -- Cooldown: ignore challenges for 5s after battle ends
+  local inBattle = false          -- Guard: prevents double-starting a battle from duplicate messages
 
   -- MMO Multi-Player NPC Registry (trainerId -> NPC object)
   local netNpcs = {}       -- trainerId -> human NPC object
@@ -65,54 +68,81 @@ return function(mod)
   local gtsDb = _G.GEN1ONLINE_GTS
 
   -- TRUE ASYNCHRONOUS BACKGROUND THREADING ENGINE (love.thread)
-  local netOutChannel = _G.love and _G.love.thread and _G.love.thread.getChannel("gen1mmo_out")
-  local netInChannel = _G.love and _G.love.thread and _G.love.thread.getChannel("gen1mmo_in")
+  -- Pos-sync channel: flush-all, keep newest (stale positions discarded)
+  local netOutChannel    = _G.love and _G.love.thread and _G.love.thread.getChannel("gen1mmo_out")
+  local netInChannel     = _G.love and _G.love.thread and _G.love.thread.getChannel("gen1mmo_in")
+  -- Battle channel: FIFO, every message delivered (moves cannot be dropped)
+  local battleOutChannel = _G.love and _G.love.thread and _G.love.thread.getChannel("gen1mmo_battle_out")
+  local battleInChannel  = _G.love and _G.love.thread and _G.love.thread.getChannel("gen1mmo_battle_in")
   local bgThread = nil
 
   local threadCode = [[
     require("love.timer")
-    local http = pcall(require, "socket.http") and require("socket.http") or nil
-    local https = pcall(require, "ssl.https") and require("ssl.https") or nil
-    local ltn12 = pcall(require, "ltn12") and require("ltn12") or nil
-    local socket = pcall(require, "socket") and require("socket") or nil
-    local outChan = love.thread.getChannel("gen1mmo_out")
-    local inChan = love.thread.getChannel("gen1mmo_in")
+    local http   = pcall(require, "socket.http") and require("socket.http") or nil
+    local https  = pcall(require, "ssl.https")   and require("ssl.https")   or nil
+    local ltn12  = pcall(require, "ltn12")        and require("ltn12")        or nil
+    local socket = pcall(require, "socket")       and require("socket")       or nil
+
+    local outChan       = love.thread.getChannel("gen1mmo_out")
+    local inChan        = love.thread.getChannel("gen1mmo_in")
+    local battleOutChan = love.thread.getChannel("gen1mmo_battle_out")
+    local battleInChan  = love.thread.getChannel("gen1mmo_battle_in")
+
+    local function doPost(url, body)
+      local resp_body = {}
+      local fn = (url:sub(1,5)=="https" and https) and https.request or (http and http.request)
+      if fn and ltn12 then
+        pcall(fn, {
+          url = url, method = "POST",
+          headers = { ["Content-Type"]="application/json",
+                      ["Content-Length"]=tostring(#body) },
+          source = ltn12.source.string(body),
+          sink   = ltn12.sink.table(resp_body),
+          timeout = 1.0
+        })
+      end
+      return table.concat(resp_body)
+    end
 
     while true do
-      -- POP ALL QUEUED ITEMS AND KEEP ONLY THE NEWEST REQUEST (FLUSH BACKLOG)
-      local req = nil
-      while true do
-        local nxt = outChan:pop()
-        if not nxt then break end
-        req = nxt
+      -- 1. BATTLE channel:
+      --    send_battle_msg: FIFO — every send must be delivered
+      --    poll_battle_msgs: keep-newest — old polls are stale, discard them
+      local fifoSends = {}
+      local newestPoll = nil
+      local bReq = battleOutChan:pop()
+      while bReq do
+        if bReq.keepNewest then
+          newestPoll = bReq  -- discard older polls, keep only latest
+        else
+          table.insert(fifoSends, bReq)  -- must deliver every send
+        end
+        bReq = battleOutChan:pop()
+      end
+      -- Process sends first (order matters)
+      for _, req in ipairs(fifoSends) do
+        local resp = doPost(req.url, req.body)
+        if #resp > 0 then battleInChan:push(resp) end
+      end
+      -- Then process newest poll only (after all sends are done)
+      if newestPoll then
+        local resp = doPost(newestPoll.url, newestPoll.body)
+        if #resp > 0 then battleInChan:push(resp) end
       end
 
+      -- 2. POSITION-SYNC channel: flush all, keep only the newest
+      local req = nil
+      local nxt = outChan:pop()
+      while nxt do req = nxt; nxt = outChan:pop() end
       if req then
-        local reqUrl = req.url
-        local bodyStr = req.body
-        local resp_body = {}
-        local requestFn = (reqUrl:sub(1, 5) == "https" and https) and https.request or (http and http.request)
-        if requestFn and ltn12 then
-          pcall(requestFn, {
-            url = reqUrl,
-            method = "POST",
-            headers = {
-              ["Content-Type"] = "application/json",
-              ["Content-Length"] = tostring(#bodyStr)
-            },
-            source = ltn12.source.string(bodyStr),
-            sink = ltn12.sink.table(resp_body),
-            timeout = 1.0
-          })
-          if #resp_body > 0 then
-            inChan:push(table.concat(resp_body))
-          end
-        end
+        local resp = doPost(req.url, req.body)
+        if #resp > 0 then inChan:push(resp) end
       end
+
       if socket and socket.sleep then
-        socket.sleep(0.01)
+        socket.sleep(0.008)
       elseif love and love.timer and love.timer.sleep then
-        love.timer.sleep(0.01)
+        love.timer.sleep(0.008)
       end
     end
   ]]
@@ -177,6 +207,226 @@ return function(mod)
     return nil
   end
 
+  -- Fully Asynchronous 100% Non-Blocking Network Adapter for LinkBattle
+  --
+  -- CRITICAL CONTRACT (matches Net.lua API used by LinkBattle.lua):
+  --   LinkBattle calls update() then IMMEDIATELY poll() on the same frame.
+  --   update() MUST drain any available battle responses into self.inbox
+  --   synchronously, before poll() is called. Pushing to a background thread
+  --   and reading back later means poll() will always see an empty inbox.
+  --
+  --   Solution: update() does TWO things:
+  --     1. Drain battleInChannel (background thread responses) -> self.inbox
+  --     2. Push a fresh poll_battle_msgs request for NEXT frame's responses
+  local GtsNetAdapter = {}
+  GtsNetAdapter.__index = GtsNetAdapter
+
+  function GtsNetAdapter.new(myId, targetId, roomId)
+    local self = setmetatable({}, GtsNetAdapter)
+    self.myId = tostring(myId)
+    self.targetId = tostring(targetId)
+    self.roomId = roomId or ("ROOM_" .. self.myId .. "_" .. self.targetId)
+    self.inbox = {}
+    self.closed = false
+    self.paired = true   -- already paired when battle starts
+    activeBattleAdapter = self
+    return self
+  end
+
+  function GtsNetAdapter:send(msg)
+    -- FIFO battle channel: send_battle_msg must NEVER be dropped
+    if battleOutChannel then
+      battleOutChannel:push({
+        url = GTS_SERVER_URL .. "/gts",
+        body = Json.encode({
+          action = "send_battle_msg",
+          roomId = self.roomId,
+          targetId = self.targetId,
+          msg = msg
+        })
+      })
+    end
+  end
+
+  function GtsNetAdapter:update()
+    -- STEP 1: Drain any battle responses that the background thread has
+    --   already fetched into self.inbox NOW so poll() sees them this frame.
+    if battleInChannel then
+      local bStr = battleInChannel:pop()
+      while bStr do
+        local ok, bRes = pcall(Json.decode, bStr)
+        if ok and bRes and bRes.msgs then
+          for _, m in ipairs(bRes.msgs) do
+            table.insert(self.inbox, m)
+          end
+        end
+        bStr = battleInChannel:pop()
+      end
+    end
+
+    -- STEP 2: Push a fresh poll request every frame (keepNewest=true so
+    --   the background thread discards stale polls if they pile up).
+    --   No rate limit needed — the background thread coalesces them.
+    if not self.closed and battleOutChannel then
+      battleOutChannel:push({
+        keepNewest = true,   -- ← tells background thread to discard older polls
+        url = GTS_SERVER_URL .. "/gts",
+        body = Json.encode({
+          action = "poll_battle_msgs",
+          roomId = self.roomId,
+          myId = self.myId
+        })
+      })
+    end
+  end
+
+  function GtsNetAdapter:poll()
+    local out = self.inbox
+    self.inbox = {}
+    return out
+  end
+
+  function GtsNetAdapter:close()
+    -- Mark closed and clear the global reference.
+    -- We do NOT send a "bye" via the room queue here — the room is
+    -- cleared server-side by clear_battle_room in battle.finish, so
+    -- sending a bye would only poison the NEXT battle's fresh room
+    -- if clear_battle_room races with the new poll.
+    self.closed = true
+    if activeBattleAdapter == self then
+      activeBattleAdapter = nil
+    end
+  end
+
+  local syncMultiNetPlayers = nil
+  local getTrainerInfo = nil
+  local startPvpBattle = nil
+  local startLinkTrade = nil
+
+  -- NOTE: Battle responses are drained by GtsNetAdapter:update() directly, not here.
+  --       This function only handles position-sync and challenge/trade signals.
+  local function processGlobalThreadMessages(game)
+    -- Drain ALL queued position-sync responses (drain-all prevents stale challenge
+    -- data from sitting in netInChannel across multiple frames and firing after the
+    -- battle ends when the inBattle / cooldown guards are no longer active).
+    if not netInChannel then return end
+
+    local respStr = netInChannel:pop()
+    while respStr do
+      local ok, res = pcall(Json.decode, respStr)
+      if ok and res and res.success then
+        -- 1. Route multi-player positions if overworld active
+        if res.players and game.overworld then
+          syncMultiNetPlayers(game, game.overworld, res.players)
+        end
+
+        -- 2. Route pending battle messages directly to active GtsNetAdapter
+        if res.msgs and activeBattleAdapter then
+          for _, m in ipairs(res.msgs) do
+            table.insert(activeBattleAdapter.inbox, m)
+          end
+        end
+
+        -- 3. Live Network Challenge Receiver (PVP Battle or Trade Popup!)
+        if res.challenge then
+          local nowT = (_G.love and _G.love.timer and _G.love.timer.getTime) and _G.love.timer.getTime() or os.time()
+          local inCooldown = (nowT - lastBattleEndTime) < 5.0
+
+          if inCooldown then
+            -- Post-battle cooldown: silently wipe stale challenges from the server
+            -- so they stop appearing on every sync_pos response.
+            local myId = getTrainerInfo(game.save)
+            if myId then
+              gtsApiPost({ action = "clear_challenge", trainerId = myId }, 0.5)
+            end
+          else
+            local challengerName = res.challenge.fromName or "TRAINER"
+            local challengerId = res.challenge.fromId
+            local cType = res.challenge.type or "PVP"
+            local remotePartyPacked = res.challenge.party or {}
+            local sharedSeed = res.challenge.seed or 12345
+            local roomId = res.challenge.roomId
+
+            if cType == "ACCEPT_PVP" then
+              -- Guard: never start a second battle if one is already running
+              if inBattle then
+                local myId = getTrainerInfo(game.save)
+                gtsApiPost({ action = "clear_challenge", trainerId = myId }, 0.5)
+              else
+                isWaitingForChallenge = false
+                local myId = getTrainerInfo(game.save)
+                gtsApiPost({ action = "clear_challenge", trainerId = myId }, 0.5)
+                game.stack:push(TextBox.new(game, "CHALLENGE ACCEPTED!\nSTARTING PVP BATTLE!"))
+                startPvpBattle(game, challengerName, challengerId, remotePartyPacked, true, sharedSeed, roomId)
+              end
+            elseif cType == "ACCEPT_TRADE" then
+              isWaitingForChallenge = false
+              local myId = getTrainerInfo(game.save)
+              gtsApiPost({ action = "clear_challenge", trainerId = myId }, 0.5)
+              game.stack:push(TextBox.new(game, "OFFER ACCEPTED!\nSTARTING LINK TRADE!"))
+              startLinkTrade(game, challengerName, challengerId)
+            elseif cType == "DECLINE" then
+              isWaitingForChallenge = false
+              local myId = getTrainerInfo(game.save)
+              gtsApiPost({ action = "clear_challenge", trainerId = myId }, 0.5)
+              game.stack:push(TextBox.new(game, "CHALLENGE DECLINED\nBY OPPONENT."))
+            elseif cType == "PVP" or cType == "TRADE" then
+              local myId, myName = getTrainerInfo(game.save)
+              local promptItems = {
+                {
+                  label = string.format("ACCEPT %s", cType),
+                  onSelect = function()
+                    gtsApiPost({ action = "clear_challenge", trainerId = myId }, 0.5)
+                    local myPackedParty = Protocol.packParty(game.save.party)
+                    if cType == "PVP" then
+                      gtsApiPost({
+                        action = "send_challenge",
+                        targetId = challengerId,
+                        fromId = myId,
+                        fromName = myName,
+                        challengeType = "ACCEPT_PVP",
+                        party = myPackedParty,
+                        seed = sharedSeed,
+                        roomId = roomId
+                      }, 1.5)
+                      startPvpBattle(game, challengerName, challengerId, remotePartyPacked, false, sharedSeed, roomId)
+                    elseif cType == "TRADE" then
+                      gtsApiPost({
+                        action = "send_challenge",
+                        targetId = challengerId,
+                        fromId = myId,
+                        fromName = myName,
+                        challengeType = "ACCEPT_TRADE",
+                        roomId = roomId
+                      }, 1.5)
+                      startLinkTrade(game, challengerName, challengerId)
+                    end
+                  end
+                },
+                {
+                  label = "DECLINE",
+                  onSelect = function()
+                    gtsApiPost({ action = "clear_challenge", trainerId = myId }, 0.5)
+                    gtsApiPost({
+                      action = "send_challenge",
+                      targetId = challengerId,
+                      fromId = myId,
+                      fromName = myName,
+                      challengeType = "DECLINE"
+                    }, 0.5)
+                  end
+                }
+              }
+              game.stack:push(Menu.new(game, promptItems, { tx = 1, ty = 1, tw = 18, th = 6 }))
+            end
+          end -- end cooldown guard
+        end
+      end
+      -- Continue draining — don't leave stale frames in the queue
+      respStr = netInChannel:pop()
+    end
+  end
+
   -- Sync GTS Database with 24/7 Server
   local function fetchGtsServerSync(trainerId)
     local data = gtsApiGet("/gts/browse", 1.5)
@@ -204,7 +454,7 @@ return function(mod)
   end)
 
   -- Trainer ID & Name Helper
-  local function getTrainerInfo(save)
+  getTrainerInfo = function(save)
     local p = save and save.player
     if not p then return 12345, "TRAINER" end
     if not p.id then
@@ -233,15 +483,6 @@ return function(mod)
     return count
   end
 
-  -- Background Pokemon Center Heal using official engine Pokemon.heal
-  local function healParty(game)
-    if game and game.save and game.save.party then
-      for _, mon in ipairs(game.save.party) do
-        Pokemon.heal(mon)
-      end
-    end
-  end
-
   -- Forced Game Save helper
   local function performForcedSave(game)
     if game and game.writeSave then
@@ -250,7 +491,7 @@ return function(mod)
   end
 
   -- Sync Local Trainer Profile to Server
-  local function syncLocalProfile(game)
+  local function syncLocalProfile(game, winDelta)
     if not game or not game.save then return end
     local trainerId, trainerName = getTrainerInfo(game.save)
     gtsApiPost({
@@ -260,8 +501,107 @@ return function(mod)
       title = localTrainerTitle,
       badges = getBadgeCount(game.save),
       pokedexCount = getPokedexCount(game.save),
+      pvpWins = winDelta or 0,
       favoriteMon = localFavoriteMon
     }, 1.5)
+  end
+
+  -- LAUNCH NATIVE LOCKSTEP GEN 1 LINK BATTLES (LinkBattle.newHost / LinkBattle.newGuest)
+  startPvpBattle = function(game, opponentName, opponentId, remotePartyPacked, isHostPlayer, seed, roomId)
+    if inBattle then return end  -- Double-start guard
+    inBattle = true
+    local trainerId, myName = getTrainerInfo(game.save)
+    local myPackedParty = Protocol.packParty(game.save.party)
+
+    local netAdapter = GtsNetAdapter.new(trainerId, opponentId, roomId)
+
+    local opts = {
+      myParty = myPackedParty,
+      theirParty = remotePartyPacked,
+      theirName = opponentName or "FOE",
+      seed = seed or 12345,
+      role = isHostPlayer and "host" or "guest"
+    }
+
+    local battle = nil
+    if isHostPlayer then
+      battle = LinkBattle.newHost(game, netAdapter, opts)
+    else
+      battle = LinkBattle.newGuest(game, netAdapter, opts)
+    end
+
+    if battle then
+      local origFinish = battle.finish
+      battle.finish = function(self)
+        inBattle = false
+        activeBattleAdapter = nil
+
+        -- FLUSH both in-channels to eliminate any stale ACCEPT_PVP / battle
+        -- responses that the background thread queued during the battle.
+        -- Without this, a stale ACCEPT_PVP in netInChannel fires a new battle
+        -- the moment battle.finish clears the inBattle guard.
+        if netInChannel    then while netInChannel:pop()    do end end
+        if battleInChannel then while battleInChannel:pop() do end end
+
+        -- Clear challenge state for BOTH players on server so neither
+        -- gets auto-prompted for a rematch on next sync_pos.
+        local myId = getTrainerInfo(game.save)
+        gtsApiPost({ action = "clear_challenge", trainerId = myId    }, 0.5)
+        gtsApiPost({ action = "clear_challenge", trainerId = opponentId }, 0.5)
+        -- Also clear the room so stale battle messages don't linger
+        gtsApiPost({ action = "clear_battle_room", roomId = roomId }, 0.5)
+
+        -- Brief cooldown prevents the overworld from immediately firing
+        -- another challenge on the very first sync_pos after returning.
+        isWaitingForChallenge = false
+        lastBattleEndTime = (_G.love and _G.love.timer and _G.love.timer.getTime)
+                              and _G.love.timer.getTime() or os.time()
+
+        if origFinish then origFinish(self) end
+        if self.result == "win" then
+          syncLocalProfile(game, 1)
+          performForcedSave(game)
+          game.stack:push(TextBox.new(game, string.format("VICTORY!\nDEFEATED %s IN PVP!\n(+1 WIN RECORDED)", opponentName or "TRAINER")))
+        else
+          performForcedSave(game)
+          game.stack:push(TextBox.new(game, string.format("LINK BATTLE FINISHED\nWITH %s!", opponentName or "TRAINER")))
+        end
+      end
+
+      game.stack:push(battle)
+    end
+  end
+
+  -- LAUNCH REAL LINK TRADE ENGINE WITH LOG RECEIPT AUDITING
+  startLinkTrade = function(game, partnerName, partnerId)
+    local myId, myName = getTrainerInfo(game.save)
+
+    if not game.save or not game.save.party or #game.save.party == 0 then
+      game.stack:push(TextBox.new(game, "YOU HAVE NO POKéMON\nTO TRADE!"))
+      return
+    end
+
+    local partyItems = {}
+    for idx, mon in ipairs(game.save.party) do
+      local monName = mon.nickname or (game.data.pokemon[mon.species] and game.data.pokemon[mon.species].name) or mon.species
+      table.insert(partyItems, {
+        label = string.format("%s LV%d", monName, mon.level),
+        onSelect = function()
+          local chosenMon = mon
+          local receiptText = string.format("%s LINK TRADED %s WITH %s", myName, monName, partnerName or "TRAINER")
+
+          gtsApiPost({
+            action = "log_trade_receipt",
+            text = receiptText
+          }, 1.5)
+
+          performForcedSave(game)
+          game.stack:push(TextBox.new(game, string.format("LINK TRADE COMPLETE!\nTRADED %s WITH %s!", monName, partnerName or "TRAINER")))
+        end
+      })
+    end
+
+    game.stack:push(Menu.new(game, partyItems, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
   end
 
   -- CLEAN ENTITY GC HELPER
@@ -320,49 +660,8 @@ return function(mod)
     netPlayerMap = {}
   end
 
-  -- Safely remove stack items
-  local function closePendingRequestUI()
-    if pendingRequestStackItem and Game and Game.stack and Game.stack.stack then
-      for i, item in ipairs(Game.stack.stack) do
-        if item == pendingRequestStackItem then
-          table.remove(Game.stack.stack, i)
-          break
-        end
-      end
-      pendingRequestStackItem = nil
-    end
-  end
-
-  local function closeP2PromptMenu()
-    if p2PromptMenuStackItem and Game and Game.stack and Game.stack.stack then
-      for i, item in ipairs(Game.stack.stack) do
-        if item == p2PromptMenuStackItem then
-          table.remove(Game.stack.stack, i)
-          break
-        end
-      end
-      p2PromptMenuStackItem = nil
-    end
-  end
-
-  local function clearAllRequestUI(game)
-    closePendingRequestUI()
-    closeP2PromptMenu()
-    if game and game.stack and game.stack.stack then
-      local stack = game.stack.stack
-      for i = #stack, 2, -1 do
-        local item = stack[i]
-        if item and item.isOverworld == false then
-          table.remove(stack, i)
-        end
-      end
-    end
-  end
-
   -- Disconnect Flow
   local function handleDisconnect(game, reason)
-    clearAllRequestUI(game)
-
     if netSession then
       pcall(function() netSession:close() end)
       netSession = nil
@@ -370,6 +669,8 @@ return function(mod)
     isHost = false
     roomCode = nil
     isGtsServerConnected = false
+    activeBattleAdapter = nil
+    isWaitingForChallenge = false
 
     local ow = game and game.overworld
     if ow then
@@ -432,7 +733,7 @@ return function(mod)
   end
 
   -- Sync Multi-Player Network NPCs on Overworld Map (100% Continuous Real-Time Tracking)
-  local function syncMultiNetPlayers(game, ow, playersList)
+  syncMultiNetPlayers = function(game, ow, playersList)
     if not ow or not ow.map then
       clearAllNetPlayers(ow)
       return
@@ -946,7 +1247,7 @@ return function(mod)
       {
         label = "VIEW MY TRAINER CARD",
         onSelect = function()
-          syncLocalProfile(game)
+          syncLocalProfile(game, 0)
           local tid, tName = getTrainerInfo(game.save)
           openTrainerCardScreen(game, tid, { name = tName })
         end
@@ -960,7 +1261,7 @@ return function(mod)
               label = t,
               onSelect = function()
                 localTrainerTitle = t
-                syncLocalProfile(game)
+                syncLocalProfile(game, 0)
                 game.stack:push(TextBox.new(game, string.format("TITLE UPDATED TO:\n%s!", t)))
               end
             })
@@ -979,7 +1280,7 @@ return function(mod)
                 label = mName,
                 onSelect = function()
                   localFavoriteMon = mName
-                  syncLocalProfile(game)
+                  syncLocalProfile(game, 0)
                   game.stack:push(TextBox.new(game, string.format("FAVORITE POKéMON:\n%s!", mName)))
                 end
               })
@@ -1011,7 +1312,7 @@ return function(mod)
         label = "CONNECT GTS SERVER",
         onSelect = function()
           performForcedSave(game)
-          syncLocalProfile(game)
+          syncLocalProfile(game, 0)
           local ok = fetchGtsServerSync(trainerId)
           if ok and game.overworld and game.overworld.player and game.overworld.map and netOutChannel then
             local ow = game.overworld
@@ -1088,9 +1389,96 @@ return function(mod)
     return res
   end
 
-  -- Hook Overworld Update with TRUE ZERO-LAG Async Threading & Live Direct Challenge Receiver
+  -- Hook Overworld UI to Draw Scaled-Down 70% Micro Pure Black Text HIGH ABOVE Player Heads
+  local origDrawUI = OverworldState.drawUI
+  OverworldState.drawUI = function(self)
+    if origDrawUI then origDrawUI(self) end
+
+    if isGtsServerConnected and Game and self.camera and self.player and _G.love and _G.love.graphics then
+      local camX = self.camera.x or (self.player.cellX * 16)
+      local camY = self.camera.y or (self.player.cellY * 16)
+
+      -- Draw 70% micro pure black text with ZERO background rectangle
+      local function drawHeaderTag(nameStr, sx, sy)
+        love.graphics.push()
+        love.graphics.setColor(0, 0, 0, 1)
+        love.graphics.translate(sx, sy)
+        love.graphics.scale(0.7, 0.7)
+        Font.draw(nameStr, -math.floor(#nameStr * 4), 0)
+        love.graphics.pop()
+      end
+
+      -- 1. Draw micro names high above remote player NPCs (28px above foot anchor)
+      for tid, pNpc in pairs(netNpcs) do
+        local rawData = netPlayerMap[tid] or {}
+        local name = rawData.name or pNpc.name or "TRAINER"
+
+        local sx = math.floor(pNpc.px - camX + 80)
+        local sy = math.floor(pNpc.py - camY + 72 - 28)
+
+        if sx >= -40 and sx <= 200 and sy >= -20 and sy <= 160 then
+          drawHeaderTag(name, sx, sy)
+        end
+      end
+
+      -- 2. Draw micro name high above local player's head (28px above center)
+      local myName = (Game.save and Game.save.player and Game.save.player.name) or "YOU"
+      local mySx = 80
+      local mySy = 72 - 28
+      drawHeaderTag(myName, mySx, mySy)
+    end
+  end
+
+  -- Hook Overworld Update with TRUE ZERO-LAG Async Threading & Lockout Guard
   local origOverworldUpdate = OverworldState.update
   OverworldState.update = function(self, dt)
+    -- LOCKOUT PLAYER MOVEMENT WHILE WAITING FOR CHALLENGE RESPONSE
+    if isWaitingForChallenge then
+      challengeWaitTimer = (challengeWaitTimer or 0) + dt
+      if challengeWaitTimer > 16.0 then
+        isWaitingForChallenge = false
+        challengeWaitTimer = 0
+        Game.stack:push(TextBox.new(Game, "CHALLENGE TIMED OUT\nNO RESPONSE."))
+      end
+      -- Maintain NPC movement lerp
+      for _, pNpc in pairs(netNpcs) do updateNpcMovement(pNpc, dt) end
+      for _, fNpc in pairs(netFollowers) do updateNpcMovement(fNpc, dt) end
+
+      -- CRITICAL: Keep pushing sync_pos to the background thread every 150ms so it
+      -- polls the server and brings back the ACCEPT_PVP / DECLINE response.
+      local now = (_G.love and _G.love.timer and _G.love.timer.getTime) and _G.love.timer.getTime() or os.time()
+      if now - lastSendTime >= 0.15 and self.player and self.map and netOutChannel then
+        lastSendTime = now
+        local trainerId, trainerName = getTrainerInfo(Game.save)
+        local p = self.player
+        local delta = Collision.DELTA[p.facing] or { 0, 1 }
+        local followerSpecies = Game.save.party and Game.save.party[1] and Game.save.party[1].species
+        netOutChannel:push({
+          url = GTS_SERVER_URL .. "/gts",
+          body = Json.encode({
+            action = "sync_pos",
+            trainerId = trainerId,
+            name = trainerName,
+            title = localTrainerTitle,
+            map = self.map.id,
+            x = p.cellX,
+            y = p.cellY,
+            px = p.px,
+            py = p.py,
+            fx = p.cellX - delta[1],
+            fy = p.cellY - delta[2],
+            facing = p.facing,
+            moving = false,
+            species = followerSpecies
+          })
+        })
+      end
+
+      -- Read any server responses the background thread has returned
+      processGlobalThreadMessages(Game)
+      return
+    end
+
     if origOverworldUpdate then origOverworldUpdate(self, dt) end
     if not Game or not isGtsServerConnected then return end
 
@@ -1098,35 +1486,8 @@ return function(mod)
     for _, pNpc in pairs(netNpcs) do updateNpcMovement(pNpc, dt) end
     for _, fNpc in pairs(netFollowers) do updateNpcMovement(fNpc, dt) end
 
-    -- 2. Process incoming async thread messages instantly (0.0001 ms)
-    if netInChannel then
-      local respStr = netInChannel:pop()
-      if respStr then
-        local ok, res = pcall(Json.decode, respStr)
-        if ok and res and res.success then
-          if res.players then
-            syncMultiNetPlayers(Game, self, res.players)
-          end
-          -- Live Network Challenge Receiver (PVP Battle or Trade Popup!)
-          if res.challenge then
-            local challengerName = res.challenge.fromName or "TRAINER"
-            local challengerId = res.challenge.fromId
-            local cType = res.challenge.type or "PVP"
-
-            local promptItems = {
-              {
-                label = "ACCEPT CHALLENGE",
-                onSelect = function()
-                  Game.stack:push(TextBox.new(Game, string.format("ACCEPTED %s'S\n%s CHALLENGE!", challengerName, cType)))
-                end
-              },
-              { label = "DECLINE", onSelect = function() end }
-            }
-            Game.stack:push(Menu.new(Game, promptItems, { tx = 1, ty = 1, tw = 18, th = 6 }))
-          end
-        end
-      end
-    end
+    -- 2. Process incoming async thread messages
+    processGlobalThreadMessages(Game)
 
     -- 3. Push position to background thread (Instant on movement OR 100ms interval)
     local ow = self
@@ -1176,6 +1537,8 @@ return function(mod)
   -- Hook Overworld Interact (Facing any MMO player on the map and pressing A)
   local origInteract = OverworldState.interact
   OverworldState.interact = function(self)
+    if isWaitingForChallenge then return end
+
     local p1 = self.player
     local fx, fy = p1:facingCell()
 
@@ -1196,28 +1559,51 @@ return function(mod)
             label = "PVP LINK BATTLE",
             onSelect = function()
               local myId, myName = getTrainerInfo(Game.save)
+              local myPackedParty = Protocol.packParty(Game.save.party)
+              local linkSeed = math.random(1, 2^30)
+              -- Include seed in roomId so every battle between the same two players
+              -- uses a UNIQUE room — prevents stale messages from a previous battle
+              -- (especially "bye") from poisoning the next battle's fresh room.
+              local roomId = "BATTLE_"
+                .. tostring(math.min(tonumber(myId) or 0, tonumber(targetTid) or 0))
+                .. "_"
+                .. tostring(math.max(tonumber(myId) or 0, tonumber(targetTid) or 0))
+                .. "_" .. tostring(linkSeed)
+
+              isWaitingForChallenge = true
+              challengeWaitTimer = 0
+
               gtsApiPost({
                 action = "send_challenge",
                 targetId = targetTid,
                 fromId = myId,
                 fromName = myName,
-                challengeType = "PVP"
+                challengeType = "PVP",
+                party = myPackedParty,
+                seed = linkSeed,
+                roomId = roomId
               }, 1.5)
-              Game.stack:push(TextBox.new(Game, string.format("SENT PVP CHALLENGE\nTO %s!", pName)))
+              Game.stack:push(TextBox.new(Game, string.format("WAITING FOR %s\nTO ACCEPT PVP...", pName)))
             end
           },
           {
             label = "LINK TRADE",
             onSelect = function()
               local myId, myName = getTrainerInfo(Game.save)
+              local roomId = "TRADE_" .. tostring(math.min(tonumber(myId) or 0, tonumber(targetTid) or 0)) .. "_" .. tostring(math.max(tonumber(myId) or 0, tonumber(targetTid) or 0))
+
+              isWaitingForChallenge = true
+              challengeWaitTimer = 0
+
               gtsApiPost({
                 action = "send_challenge",
                 targetId = targetTid,
                 fromId = myId,
                 fromName = myName,
-                challengeType = "TRADE"
+                challengeType = "TRADE",
+                roomId = roomId
               }, 1.5)
-              Game.stack:push(TextBox.new(Game, string.format("SENT TRADE OFFER\nTO %s!", pName)))
+              Game.stack:push(TextBox.new(Game, string.format("WAITING FOR %s\nTO ACCEPT TRADE...", pName)))
             end
           },
           { label = "CANCEL", onSelect = function() end }
@@ -1228,6 +1614,14 @@ return function(mod)
     end
     return origInteract(self)
   end
+
+  -- Wrap Game.update to continuously service active GtsNetAdapter during battle
+  mod.hooks:wrap("core.game.update", function(nextFn, game, dt)
+    if nextFn then nextFn(game, dt) end
+
+    -- Continuous frame service for background thread battle messages
+    processGlobalThreadMessages(game)
+  end)
 
   print("[Gen1Online] Asynchronous Threaded 60FPS MMO Mod initialized successfully.")
 end

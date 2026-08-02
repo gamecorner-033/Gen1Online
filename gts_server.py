@@ -2,7 +2,11 @@
 """
 Gen1Online - Cloud-Ready Multi-Threaded Self-Cleansing GTS & MMO Overworld Server
 Features:
-- Live Network Direct Challenges (PVP Battle & Link Trade popups across players!)
+- Live Network Multi-Room Lockstep Challenges (PVP Link Battle & Link Trade popups across players!)
+- Guaranteed Delivery on Challenges (Stays pending until accepted/declined or 15s expiration)
+- Isolated Multi-Battle Rooms (Supports unlimited simultaneous battles: P1 vs P2, P3 vs P4, etc.)
+- 15-Second Expiry on Pending Challenges to Prevent Auto-Battles on Connection
+- Live PVP Win/Loss Record Tracking & Persistent Profile Updates
 - In-Memory Fast Position Sync (< 1ms response time, zero disk I/O on movement)
 - Multi-threaded ThreadingTCPServer for instant simultaneous multi-player connections
 - Multi-player 16-player overworld position sync API per map instance
@@ -21,7 +25,8 @@ DB_FILE = os.environ.get("GTS_DB_PATH", os.path.join(os.path.dirname(__file__), 
 
 LISTING_TTL_SECONDS = 30 * 86400
 CLAIM_TTL_SECONDS = 60 * 86400
-PLAYER_TIMEOUT_SECONDS = 30  # Increased to 30s to prevent accidental purges during map transitions
+PLAYER_TIMEOUT_SECONDS = 30  # 30s timeout guard for map transitions
+CHALLENGE_TTL_SECONDS = 15   # Challenges expire in 15s so stale challenges never launch on join
 
 db = {
     "listings": {},          # listingId -> listing object
@@ -30,7 +35,8 @@ db = {
     "claim_boxes": {},       # trainerId -> array of traded mons
     "profiles": {},          # trainerId -> persistent profile object
     "active_players": {},    # trainerId -> live position & state object (IN-MEMORY ONLY)
-    "pending_challenges": {}, # targetTrainerId -> challenge object (fromId, fromName, type)
+    "pending_challenges": {}, # targetTrainerId -> challenge object (fromId, fromName, type, party, seed, roomId)
+    "battle_rooms": {},       # roomId -> { targetTrainerId -> [pending_messages] }
     "next_id": 1001
 }
 
@@ -43,14 +49,14 @@ def load_db():
             with open(DB_FILE, "r", encoding="utf-8") as f:
                 loaded = json.load(f)
                 for k, v in loaded.items():
-                    if k not in ["active_players", "pending_challenges"]:
+                    if k not in ["active_players", "pending_challenges", "battle_rooms"]:
                         db[k] = v
         except Exception as e:
             print(f"[GTS Cloud Server] Error loading database: {e}")
 
 def save_db():
     try:
-        save_copy = {k: v for k, v in db.items() if k not in ["active_players", "pending_challenges"]}
+        save_copy = {k: v for k, v in db.items() if k not in ["active_players", "pending_challenges", "battle_rooms"]}
         with open(DB_FILE, "w", encoding="utf-8") as f:
             json.dump(save_copy, f, indent=2)
     except Exception as e:
@@ -90,6 +96,11 @@ def self_clean_db():
     for tid, pdata in list(db.get("active_players", {}).items()):
         if now - pdata.get("timestamp", 0) > PLAYER_TIMEOUT_SECONDS:
             db["active_players"].pop(tid, None)
+
+    # 4. Purge stale challenges (> 15 seconds old)
+    for tid, cdata in list(db.get("pending_challenges", {}).items()):
+        if now - cdata.get("timestamp", 0) > CHALLENGE_TTL_SECONDS:
+            db["pending_challenges"].pop(tid, None)
 
     if purged_listings > 0 or purged_claims > 0:
         print(f"[Self-Cleansing Engine] Purged {purged_listings} expired listings and {purged_claims} old claims.")
@@ -242,8 +253,11 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                     if len(map_players) >= 16:
                         break
 
-            # Check if there is an incoming live challenge for this player
-            challenge = db["pending_challenges"].pop(trainer_id, None)
+            # Check if there is a pending challenge (do not pop so delivery is guaranteed)
+            challenge = db["pending_challenges"].get(trainer_id)
+            if challenge and (now - challenge.get("timestamp", 0) > CHALLENGE_TTL_SECONDS):
+                db["pending_challenges"].pop(trainer_id, None)
+                challenge = None
 
             self._send_json({
                 "success": True,
@@ -251,24 +265,67 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 "challenge": challenge
             })
 
-        # 2. Direct Network Challenge Endpoint (PVP / Trade)
+        # 2. Direct Network Challenge Endpoint (PVP Lockstep / Trade / Log Trade)
         elif action == "send_challenge":
             target_id = str(req.get("targetId"))
             from_id = str(req.get("fromId"))
             from_name = req.get("fromName", "TRAINER")
-            challenge_type = req.get("challengeType", "PVP") # "PVP" or "TRADE"
+            challenge_type = req.get("challengeType", "PVP")
+            room_id = req.get("roomId") or f"ROOM_{min(from_id, target_id)}_{max(from_id, target_id)}"
 
             db["pending_challenges"][target_id] = {
                 "fromId": from_id,
                 "fromName": from_name,
                 "type": challenge_type,
+                "party": req.get("party"),
+                "seed": req.get("seed"),
+                "roomId": room_id,
                 "timestamp": now
             }
 
             self._send_json({
                 "success": True,
-                "message": f"Challenge sent to Trainer ID {target_id}"
+                "roomId": room_id,
+                "message": f"Challenge '{challenge_type}' sent to Trainer ID {target_id}"
             })
+
+        elif action == "clear_challenge":
+            trainer_id = str(req.get("trainerId"))
+            db["pending_challenges"].pop(trainer_id, None)
+            self._send_json({"success": True})
+
+        # 3. Dedicated Lockstep Multi-Room Battle Messaging API
+        elif action == "send_battle_msg":
+            room_id = str(req.get("roomId"))
+            target_id = str(req.get("targetId"))
+            msg = req.get("msg")
+
+            if room_id not in db["battle_rooms"]:
+                db["battle_rooms"][room_id] = {}
+            if target_id not in db["battle_rooms"][room_id]:
+                db["battle_rooms"][room_id][target_id] = []
+
+            db["battle_rooms"][room_id][target_id].append(msg)
+            self._send_json({"success": True})
+
+        elif action == "poll_battle_msgs":
+            room_id = str(req.get("roomId"))
+            my_id = str(req.get("myId"))
+
+            pending_msgs = []
+            if room_id in db["battle_rooms"] and my_id in db["battle_rooms"][room_id]:
+                pending_msgs = db["battle_rooms"][room_id].pop(my_id, [])
+
+            self._send_json({
+                "success": True,
+                "msgs": pending_msgs
+            })
+
+        elif action == "log_trade_receipt":
+            text = req.get("text", "LINK TRADE COMPLETED")
+            add_receipt(text)
+            save_db()
+            self._send_json({"success": True})
 
         elif action == "update_profile":
             trainer_id = str(req.get("trainerId"))
@@ -399,6 +456,8 @@ def run_server():
         print(f"======================================================")
         print(f"  Gen1Online Fast High-Performance Server (Port {PORT})")
         print(f"  Live Network Challenges: ENABLED (PVP & Link Trade)")
+        print(f"  Guaranteed Challenge Delivery: ENABLED")
+        print(f"  Multi-Room Lockstep Battle System: ENABLED")
         print(f"  In-Memory Position Sync: ENABLED (<1ms latency)")
         print(f"======================================================")
         try:
