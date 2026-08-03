@@ -131,7 +131,6 @@ uv run gen1online-migrate gts_database.json
 
 1. Press **`START`** → Select **`CO-OP ONLINE`**.
 2. Select **`CONNECT GTS SERVER`** to synchronize with the live 24/7 Global Trade Station.
-3. Select **`HOST SERVER`** or **`JOIN SERVER`** to connect with friends for overworld roaming, PVP battles, and link trading!
 
 ---
 
