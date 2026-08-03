@@ -32,8 +32,9 @@ return function(mod)
   local hasLtn12, ltn12 = pcall(require, "ltn12")
   if not hasLtn12 then ltn12 = nil end
 
-  -- Direct Cloudflare Tunnel URL
-  local GTS_SERVER_URL = "https://environments-ion-statutes-miami.trycloudflare.com"
+  -- Direct server URL (dev: local docker-compose stack; REVERT to the Cloudflare
+  -- tunnel URL and rebuild mod.zip before tagging any release)
+  local GTS_SERVER_URL = "http://127.0.0.1:7779"
   local isGtsServerConnected = false -- Explicit manual connection required via menu
 
   -- Networking State
@@ -1731,7 +1732,7 @@ return function(mod)
     -- screen is on top -- e.g. sitting in the CO-OP ONLINE menu, browsing the
     -- GTS, or reading a confirmation textbox. The server purges anyone whose
     -- sync_pos goes quiet for 30+ seconds (PLAYER_TIMEOUT_SECONDS in
-    -- gts_server.py), so a player who lingers in a menu vanishes from
+    -- src/gen1online/config.py), so a player who lingers in a menu vanishes from
     -- everyone else's player list even though they're still fully connected.
     -- This hook runs unconditionally every frame regardless of what's on top
     -- of the stack, so it keeps a low-rate position ping alive whenever the

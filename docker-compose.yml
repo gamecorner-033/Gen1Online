@@ -1,0 +1,30 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${GTS_DB_USER:-gts}
+      POSTGRES_PASSWORD: ${GTS_DB_PASSWORD:-gts}
+      POSTGRES_DB: ${GTS_DB_NAME:-gts}
+    volumes:
+      - gts_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${GTS_DB_USER:-gts} -d ${GTS_DB_NAME:-gts}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  gts-server:
+    build: .
+    environment:
+      PORT: 7779
+      DATABASE_URL: postgresql://${GTS_DB_USER:-gts}:${GTS_DB_PASSWORD:-gts}@postgres:5432/${GTS_DB_NAME:-gts}
+    ports:
+      - "127.0.0.1:7779:7779"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  gts_pgdata:
