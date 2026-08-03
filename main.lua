@@ -88,10 +88,11 @@ return function(mod)
   local escapedPath = string.gsub(threadPackagePath, "\\", "\\\\")
   local escapedCpath = string.gsub(threadPackageCpath, "\\", "\\\\")
 
-  -- Remote NPC count logging timer
-  local remoteCountLogTime = 0
+-- Remote NPC count logging timer
+   local remoteCountLogTime = 0
+   local announcementMessage = nil
 
-  local threadCode = [[
+   local threadCode = [[
     -- Inject main thread's package paths (backslashes escaped)
     package.path = "]] .. escapedPath .. [["
     package.cpath = "]] .. escapedCpath .. [["
@@ -467,10 +468,12 @@ return function(mod)
               game.stack:push(Menu.new(game, promptItems, { tx = 1, ty = 1, tw = 18, th = 6 }))
             end
           end -- end cooldown guard
-        end
-      end
-      -- Continue draining — don't leave stale frames in the queue
-      respStr = netInChannel:pop()
+end
+       end
+       -- 4. Handle announcement from server
+       announcementMessage = res.announcement
+       -- Continue draining — don't leave stale frames in the queue
+       respStr = netInChannel:pop()
     end
   end
 
@@ -1778,5 +1781,40 @@ return function(mod)
     printThreadDebug()
   end)
 
-  print("[Gen1Online] Asynchronous Threaded 60FPS MMO Mod initialized successfully.")
-end
+print("[Gen1Online] Asynchronous Threaded 60FPS MMO Mod initialized successfully.")
+   -- Wrap love.draw to display announcements on top of the screen
+   if love and love.draw then
+     local oldDraw = love.draw
+     function love.draw()
+       if oldDraw then oldDraw() end
+       if announcementMessage then
+         local width = love.graphics.getWidth() or 800
+         local height = love.graphics.getHeight() or 600
+         local bannerHeight = 20
+         love.graphics.setColor(0, 0, 0, 0.7) -- semi-transparent black
+         love.graphics.rectangle("fill", 0, 0, width, bannerHeight)
+         love.graphics.setColor(1, 1, 1, 1) -- white text
+         local font = love.graphics.getFont()
+         local textWidth = font:getWidth(announcementMessage)
+         local textHeight = font:getHeight()
+         love.graphics.print(announcementMessage, (width - textWidth) / 2, (bannerHeight - textHeight) / 2)
+       end
+     end
+   else
+     -- Fallback (should not happen in LÖVE)
+     function love.draw()
+       if announcementMessage then
+         local width = love.graphics.getWidth() or 800
+         local height = love.graphics.getHeight() or 600
+         local bannerHeight = 20
+         love.graphics.setColor(0, 0, 0, 0.7)
+         love.graphics.rectangle("fill", 0, 0, width, bannerHeight)
+         love.graphics.setColor(1, 1, 1, 1)
+         local font = love.graphics.getFont()
+         local textWidth = font:getWidth(announcementMessage)
+         local textHeight = font:getHeight()
+         love.graphics.print(announcementMessage, (width - textWidth) / 2, (bannerHeight - textHeight) / 2)
+       end
+     end
+   end
+ end
