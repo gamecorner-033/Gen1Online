@@ -20,6 +20,7 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -82,13 +83,15 @@ def _send_result(status, payload):
     raise ApiError(status, payload)
 
 
-def _require_admin(request):
+bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def require_admin(request: Request, creds: HTTPAuthorizationCredentials | None = Depends(bearer_scheme)):
     if not config.ADMIN_TOKEN:
         raise ApiError(403, {"error": "Admin API disabled (ADMIN_TOKEN not set)"})
-    auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
+    if creds is None:
         raise ApiError(401, {"error": "Missing Authorization: Bearer token"})
-    if not secrets.compare_digest(auth[len("Bearer "):], config.ADMIN_TOKEN):
+    if not secrets.compare_digest(creds.credentials, config.ADMIN_TOKEN):
         raise ApiError(401, {"error": "Unauthorized"})
 
 
@@ -136,7 +139,6 @@ def _dispatch_post(request, body, storage):
 
 
 def _dispatch_admin(request, body, storage):
-    _require_admin(request)
     action = body.get("action")
     handler = ADMIN_POST_HANDLERS.get(action)
     if handler is None:
@@ -278,24 +280,23 @@ def create_app() -> FastAPI:
         return _send_result(*gts.claims(storage, request.query_params.get("trainerId")))
 
     @app.get("/gts/admin/players", tags=["Admin"])
-    def admin_players_view(request: Request, storage: Storage = Depends(get_storage)):
-        _require_admin(request)
+    def admin_players_view(request: Request, storage: Storage = Depends(get_storage),
+                           _: None = Depends(require_admin)):
         return _send_result(*admin.admin_players(storage))
 
     @app.get("/gts/admin/bans", tags=["Admin"])
-    def admin_bans_view(request: Request, storage: Storage = Depends(get_storage)):
-        _require_admin(request)
+    def admin_bans_view(request: Request, storage: Storage = Depends(get_storage),
+                        _: None = Depends(require_admin)):
         return _send_result(*admin.admin_bans(storage))
 
     @app.get("/gts/admin/announcement", tags=["Admin"])
-    def admin_announcement_view(request: Request, storage: Storage = Depends(get_storage)):
-        _require_admin(request)
+    def admin_announcement_view(request: Request, storage: Storage = Depends(get_storage),
+                                _: None = Depends(require_admin)):
         return _send_result(*admin.admin_announcement(storage))
 
     @app.get("/gts/admin", tags=["Admin"])
     @app.get("/gts/admin/{tail:path}", tags=["Admin"])
-    def admin_unknown_view(request: Request):
-        _require_admin(request)
+    def admin_unknown_view(request: Request, _: None = Depends(require_admin)):
         raise ApiError(404, {"error": "Unknown admin view"})
 
     @app.get("/{path:path}", tags=["Fallback"])
@@ -312,7 +313,7 @@ def create_app() -> FastAPI:
     @app.post("/gts/admin", tags=["Admin"])
     @app.post("/gts/admin/{tail:path}", tags=["Admin"])
     def post_admin(request: Request, body: dict = Depends(_parse_json_body),
-                   storage: Storage = Depends(get_storage)):
+                   storage: Storage = Depends(get_storage), _: None = Depends(require_admin)):
         return _dispatch_admin(request, body, storage)
 
     # Preserve the legacy quirk where any POST path dispatches by `action`.
