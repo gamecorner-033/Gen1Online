@@ -33,96 +33,96 @@ MaybeId = Annotated[Optional[str], BeforeValidator(_coerce_id)]
 
 
 class SyncPosRequest(LenientModel):
-    trainerId: MaybeId = None
-    name: Optional[str] = None
-    map: Optional[str] = None
-    x: Optional[Union[int, float]] = None
-    y: Optional[Union[int, float]] = None
-    px: Optional[Union[int, float]] = None
-    py: Optional[Union[int, float]] = None
-    fx: Optional[Union[int, float]] = None
-    fy: Optional[Union[int, float]] = None
-    facing: Optional[str] = None
-    moving: Optional[bool] = None
-    species: Optional[str] = None
-    title: Optional[str] = None
+    trainerId: MaybeId = Field(None, description="Numeric trainer ID (love.math.random). Used to key the online player entry.")
+    name: Optional[str] = Field(None, description="Trainer display name.")
+    map: Optional[str] = Field(None, description="Current map id (e.g. VERIDIAN_CITY).")
+    x: Optional[Union[int, float]] = Field(None, description="Overworld tile column.")
+    y: Optional[Union[int, float]] = Field(None, description="Overworld tile row.")
+    px: Optional[Union[int, float]] = Field(None, description="Pixel X (cellX * 16).")
+    py: Optional[Union[int, float]] = Field(None, description="Pixel Y (cellY * 16).")
+    fx: Optional[Union[int, float]] = Field(None, description="Tile X of the tile behind the player (facing tile).")
+    fy: Optional[Union[int, float]] = Field(None, description="Tile Y of the tile behind the player (facing tile).")
+    facing: Optional[str] = Field(None, description="Facing direction (up/down/left/right).")
+    moving: Optional[bool] = Field(None, description="Whether the player is currently moving.")
+    species: Optional[str] = Field(None, description="Follower Pokemon species shown next to the trainer.")
+    title: Optional[str] = Field(None, description="Trainer title (e.g. ROOKIE).")
 
 
 class SendChallengeRequest(LenientModel):
-    targetId: MaybeId = None
-    fromId: MaybeId = None
-    fromName: Optional[str] = None
-    challengeType: Optional[str] = None
-    roomId: Optional[str] = None
-    party: Optional[Any] = None
-    seed: Optional[Any] = None
+    targetId: MaybeId = Field(None, description="ID of the trainer being challenged.")
+    fromId: MaybeId = Field(None, description="ID of the challenger (self).")
+    fromName: Optional[str] = Field(None, description="Challenger display name.")
+    challengeType: Optional[str] = Field(None, description="PVP, ACCEPT_PVP, TRADE, ACCEPT_TRADE or DECLINE.")
+    roomId: Optional[str] = Field(None, description="Unique battle room id (embeds a random seed).")
+    party: Optional[Any] = Field(None, description="Packed party payload (Protocol.packParty) sent for ACCEPT_PVP.")
+    seed: Optional[Any] = Field(None, description="Shared battle random seed for lockstep sync.")
 
 
 class ClearChallengeRequest(LenientModel):
-    trainerId: MaybeId = None
+    trainerId: MaybeId = Field(None, description="ID of the trainer whose pending challenge should be removed.")
 
 
 class SendBattleMsgRequest(LenientModel):
-    roomId: Optional[str] = None
-    targetId: MaybeId = None
-    fromId: MaybeId = None
-    msg: Optional[Any] = None
+    roomId: Optional[str] = Field(None, description="Battle room id the message belongs to.")
+    targetId: MaybeId = Field(None, description="ID of the receiving trainer. FIFO — every message must be delivered.")
+    fromId: MaybeId = Field(None, description="ID of the sending trainer.")
+    msg: Optional[Any] = Field(None, description="Opaque battle message payload (moves, state, bye, ...).")
 
 
 class PollBattleMsgsRequest(LenientModel):
-    roomId: Optional[str] = None
-    myId: MaybeId = None
+    roomId: Optional[str] = Field(None, description="Battle room id to poll.")
+    myId: MaybeId = Field(None, description="Own trainer ID; drains the FIFO inbox for this trainer.")
 
 
 class ClearBattleRoomRequest(LenientModel):
-    roomId: Optional[str] = None
+    roomId: Optional[str] = Field(None, description="Battle room id to destroy (drops all queued messages).")
 
 
 class LogTradeReceiptRequest(LenientModel):
-    trainerId: Optional[str] = None
-    text: Optional[str] = None
+    trainerId: Optional[str] = Field(None, description="Numeric trainer ID (accepts a string on the wire).")
+    text: Optional[str] = Field(None, description="Human-readable receipt line appended to history (default: LINK TRADE COMPLETED).")
 
 
 class UpdateProfileRequest(LenientModel):
-    trainerId: MaybeId = None
-    name: Optional[str] = None
-    title: Optional[str] = None
-    badges: Optional[int] = None
-    pokedexCount: Optional[int] = None
-    gtsTrades: Optional[int] = None
-    pvpWins: Optional[int] = None
-    favoriteMon: Optional[str] = None
+    trainerId: MaybeId = Field(None, description="Numeric trainer ID whose profile is updated.")
+    name: Optional[str] = Field(None, description="Trainer display name.")
+    title: Optional[str] = Field(None, description="Trainer title (e.g. POKéMON TRAINER).")
+    badges: Optional[int] = Field(None, description="Gym badge count (absolute).")
+    pokedexCount: Optional[int] = Field(None, description="Pokedex caught count (absolute).")
+    gtsTrades: Optional[int] = Field(None, description="GTS trade count (additive).")
+    pvpWins: Optional[int] = Field(None, description="PVP win count (additive).")
+    favoriteMon: Optional[str] = Field(None, description="Favorite species (e.g. PIKACHU).")
 
 
 class DepositRequest(LenientModel):
-    trainerId: MaybeId = None
-    trainerName: Optional[str] = None
-    offeredMon: Optional[Dict[str, Any]] = None
-    wanted: Optional[List[Any]] = None
+    trainerId: MaybeId = Field(None, description="Numeric trainer ID making the deposit.")
+    trainerName: Optional[str] = Field(None, description="Trainer display name (shown as OT on the listing).")
+    offeredMon: Optional[Dict[str, Any]] = Field(None, description="Packed Pokemon being offered (Protocol.packMon).")
+    wanted: Optional[List[Any]] = Field(None, description="Wanted species list (e.g. [PIKACHU]). Client sends up to 3.")
 
 
 class TradeRequest(LenientModel):
-    listingId: Optional[str] = None
-    buyerId: MaybeId = None
-    buyerName: Optional[str] = None
-    sentMon: Optional[Dict[str, Any]] = None
+    listingId: Optional[str] = Field(None, description="GTS listing id to buy (e.g. GTS_42).")
+    buyerId: MaybeId = Field(None, description="Numeric ID of the buyer.")
+    buyerName: Optional[str] = Field(None, description="Buyer display name.")
+    sentMon: Optional[Dict[str, Any]] = Field(None, description="Packed Pokemon being sent in exchange (Protocol.packMon).")
 
 
 class WithdrawRequest(LenientModel):
-    listingId: Optional[str] = None
-    trainerId: MaybeId = None
+    listingId: Optional[str] = Field(None, description="GTS listing id to pull back.")
+    trainerId: MaybeId = Field(None, description="Numeric trainer ID; must be the listing owner.")
 
 
 class ClaimRequest(LenientModel):
-    trainerId: MaybeId = None
-    index: Optional[int] = None
+    trainerId: MaybeId = Field(None, description="Numeric trainer ID whose claim box is redeemed.")
+    index: Optional[int] = Field(None, description="0-based index into the trainer's claim box.")
 
 
 class AdminRequest(LenientModel):
-    trainerId: MaybeId = None
-    duration: Optional[int] = None
-    listingId: Optional[str] = None
-    message: Optional[str] = None
+    trainerId: MaybeId = Field(None, description="Target trainer ID for kick/ban/unban.")
+    duration: Optional[int] = Field(None, description="Ban duration in seconds (kick default 300, ban default 86400).")
+    listingId: Optional[str] = Field(None, description="Listing id to remove (remove_listing).")
+    message: Optional[str] = Field(None, description="Announcement text (announce).")
 
 
 ACTION_MODELS: Dict[str, type[BaseModel]] = {
