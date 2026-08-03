@@ -49,6 +49,84 @@
 
 ---
 
+## 🖥️ Run Your Own Server
+
+To run your own server all you need to do is install **Docker + Docker Compose** and start the stack.
+
+### Quick Start
+
+```bash
+git clone https://github.com/c0pper/Gen1Online.git
+cd Gen1Online
+docker compose up -d --build
+```
+
+This starts a `postgres` container (health-gated) and the `gts-server` (built from the uv-based Dockerfile). Once both are up, verify it's alive:
+
+```bash
+curl http://127.0.0.1:7779/gts/browse
+# {"success": true, "status": "ONLINE", ...}
+```
+
+### Expose It Publicly
+
+The server is built to sit behind a **Cloudflare Tunnel (`cloudflared`)** or a reverse proxy — never expose port 7779 directly. The fastest way to try it out:
+
+```bash
+cloudflared tunnel --url http://127.0.0.1:7779
+```
+
+That prints a `trycloudflare.com` URL you can connect to immediately. For a permanent address, configure a [named Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) pointing at `http://localhost:7779`.
+
+### Point the Mod at Your Server
+
+Players connect to the URL hardcoded in `main.lua` (`GTS_SERVER_URL`, defaulting to the live server). To point them at your own server:
+
+1. Edit `GTS_SERVER_URL` in `main.lua` to your tunnel URL.
+2. Rebuild the player zip so it ships your build:
+   ```bash
+   zip mod.zip main.lua manifest.json mod.card README.md
+   ```
+
+### Configuration
+
+| Variable | Default | Description |
+|---|---|---|
+| `GTS_DB_USER` | `gts` | Postgres username |
+| `GTS_DB_PASSWORD` | `gts` | Postgres password |
+| `GTS_DB_NAME` | `gts` | Postgres database name |
+| `LOG_LEVEL` | `INFO` | `DEBUG` for verbose sync/battle logging |
+| `PORT` | `7779` | Server listen port |
+| `HOST` | `0.0.0.0` | Server bind address |
+| `DATABASE_URL` | `postgresql://gts:gts@localhost:5432/gts` | Direct Postgres DSN (uv mode) |
+
+### Data Persistence
+
+All listings, trades, claims and profiles are stored in the `gts_pgdata` Docker volume. Back it up with `pg_dump` (or snapshot the volume) if you care about keeping the GTS across restarts.
+
+### Run Without Docker
+
+Requires a reachable Postgres:
+
+```bash
+uv sync
+uv run gen1online-server
+```
+
+Set `DATABASE_URL` if your database is not at the default address.
+
+### Import Legacy Data (Optional)
+
+To seed the server from the frozen legacy database included in the repo:
+
+```bash
+uv run gen1online-migrate gts_database.json
+```
+
+> ⚠️ This truncates the GTS tables first.
+
+---
+
 ## 🕹️ How to Play Online
 
 1. Press **`START`** → Select **`CO-OP ONLINE`**.
