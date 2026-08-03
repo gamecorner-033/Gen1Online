@@ -6,9 +6,26 @@
     "45799": 0,
     "43253": 0,
     "5306": 0,
-    "38673": 0
+    "38673": 0,
+    "9444": 0
   },
   "history": [
+    {
+      "text": "Luka TRADED PIKACHU TO Wisee FOR ENTEI",
+      "time": 1785721520
+    },
+    {
+      "text": "Wisee (ID 9444) DEPOSITED ENTEI LV30",
+      "time": 1785721511
+    },
+    {
+      "text": "Luka (ID 43253) DEPOSITED Volt LV10",
+      "time": 1785721452
+    },
+    {
+      "text": "Luka (ID 43253) DEPOSITED Volt LV10",
+      "time": 1785720727
+    },
     {
       "text": "JJ TRADED PIKACHU TO Luka FOR MEW",
       "time": 1785718417
@@ -177,55 +194,9 @@
     ],
     "11531": [],
     "5306": [],
-    "43253": [
-      {
-        "mon": {
-          "exp": 8000,
-          "otId": 45799,
-          "dvs": {
-            "speed": 3,
-            "attack": 1,
-            "defense": 8,
-            "special": 12,
-            "hp": 10
-          },
-          "statExp": {
-            "speed": 0,
-            "attack": 0,
-            "defense": 0,
-            "special": 0,
-            "hp": 0
-          },
-          "level": 20,
-          "moves": [
-            {
-              "id": "THUNDERSHOCK",
-              "pp": 30
-            },
-            {
-              "id": "GROWL",
-              "pp": 40
-            },
-            {
-              "id": "THUNDER_WAVE",
-              "pp": 20
-            },
-            {
-              "id": "QUICK_ATTACK",
-              "pp": 30
-            }
-          ],
-          "hp": 48,
-          "species": "PIKACHU",
-          "ot": "JJ"
-        },
-        "fromName": "JJ",
-        "fromId": "45799",
-        "originalOffered": "MEW",
-        "timestamp": 1785718417
-      }
-    ],
-    "45799": []
+    "43253": [],
+    "45799": [],
+    "9444": []
   },
   "profiles": {
     "63884": {
@@ -237,18 +208,18 @@
       "gtsTrades": 0,
       "pvpWins": 2,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1785718559
+      "timestamp": 1785722175
     },
     "45799": {
       "trainerId": "45799",
-      "name": "LONG",
+      "name": "JJ",
       "title": "ACE TRAINER",
       "badges": 0,
-      "pokedexCount": 1,
+      "pokedexCount": 47,
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1785719596
+      "timestamp": 1785722263
     },
     "38673": {
       "trainerId": "38673",
@@ -270,7 +241,7 @@
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1785719498
+      "timestamp": 1785722215
     },
     "43253": {
       "trainerId": "43253",
@@ -281,7 +252,7 @@
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1785718002
+      "timestamp": 1785721891
     },
     "60368": {
       "trainerId": "60368",
@@ -292,7 +263,7 @@
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1785718833
+      "timestamp": 1785721421
     },
     "5306": {
       "trainerId": "5306",
@@ -362,14 +333,14 @@
     },
     "49363": {
       "trainerId": "49363",
-      "name": "BLUE",
-      "title": "ACE TRAINER",
+      "name": "BRYCE",
+      "title": "COOLTRAINER",
       "badges": 0,
-      "pokedexCount": 5,
+      "pokedexCount": 3,
       "gtsTrades": 0,
       "pvpWins": 0,
-      "favoriteMon": "CHARIZARD",
-      "timestamp": 1785718490
+      "favoriteMon": "CHARMA",
+      "timestamp": 1785721709
     },
     "20772": {
       "trainerId": "20772",
@@ -381,7 +352,40 @@
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
       "timestamp": 1785714051
+    },
+    "9444": {
+      "trainerId": "9444",
+      "name": "Wisee",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 1,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1785722227
+    },
+    "54367": {
+      "trainerId": "54367",
+      "name": "ALEX",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 3,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1785722157
+    },
+    "13330": {
+      "trainerId": "13330",
+      "name": "Luka",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 1,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1785722240
     }
   },
-  "next_id": 1020
+  "next_id": 1023
 }

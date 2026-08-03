@@ -1,4 +1,5 @@
--- zip test
+-- zip test2
+
 return function(mod)
   print("[Gen1Online] Initializing Gen1Online Asynchronous Threaded 60FPS MMO Mod...")
 
@@ -85,6 +86,9 @@ return function(mod)
   -- Escape backslashes to avoid invalid escape sequences in the thread code string literal
   local escapedPath = string.gsub(threadPackagePath, "\\", "\\\\")
   local escapedCpath = string.gsub(threadPackageCpath, "\\", "\\\\")
+
+  -- Remote NPC count logging timer
+  local remoteCountLogTime = 0
 
   local threadCode = [[
     -- Inject main thread's package paths (backslashes escaped)
@@ -798,170 +802,175 @@ return function(mod)
   -- Sync Multi-Player Network NPCs on Overworld Map (100% Continuous Real-Time Tracking)
   syncMultiNetPlayers = function(game, ow, playersList)
     if not ow or not ow.map then
-      clearAllNetPlayers(ow)
-      return
+        clearAllNetPlayers(ow)
+        return
     end
 
     local activeIds = {}
+    local currentMapId = tostring(ow.map.id)
+    print("[DEBUG] syncMultiNetPlayers: current map = " .. currentMapId)
+
     for _, data in ipairs(playersList or {}) do
-      local tid = tostring(data.trainerId)
-      activeIds[tid] = true
-      netPlayerMap[tid] = data
+        local tid = tostring(data.trainerId)
+        local remoteMapId = tostring(data.map)
+        print("[DEBUG] Player " .. tid .. " is on map " .. remoteMapId)
 
-      if tostring(data.map) == tostring(ow.map.id) then
-        local facing = data.facing or "down"
-        local isMoving = data.moving or false
-        local destX = data.x or 5
-        local destY = data.y or 5
+        -- Only process if the remote player is on the SAME map (case-insensitive)
+        if remoteMapId:lower() == currentMapId:lower() then
+            activeIds[tid] = true
+            netPlayerMap[tid] = data
 
-        local originX = destX
-        local originY = destY
-        if isMoving then
-          local delta = Collision.DELTA[facing] or { 0, 1 }
-          originX = destX - delta[1]
-          originY = destY - delta[2]
-        end
+            local facing = data.facing or "down"
+            local isMoving = data.moving or false
+            local destX = data.x or 5
+            local destY = data.y or 5
 
-        local targetPx = destX * 16
-        local targetPy = destY * 16
-        local originPx = originX * 16
-        local originPy = originY * 16
-
-        local fCellX = data.fx or originX
-        local fCellY = data.fy or originY
-        local fTargetPx = fCellX * 16
-        local fTargetPy = fCellY * 16
-
-        -- 1. Create NPC Avatar on Initial Spawn
-        if not netNpcs[tid] then
-          -- IMPORTANT: index used to be `290 + (#ow.npcs % 50)` -- derived
-          -- from the LOCAL client's own already-loaded NPC count, which has
-          -- nothing to do with the remote player being spawned. Pallet Town
-          -- (and most maps) already ship several vanilla NPCs, so #ow.npcs
-          -- varies per client/map-state, and this index feeds NPC.new's
-          -- self.id ("<map>_obj_<index>"), which the game's own object
-          -- registration keys off of. A collision with a real ROM NPC's
-          -- index (or, with 2+ remote players, a collision between two
-          -- network avatars computed from the same local #ow.npcs) can
-          -- silently fail to render rather than error -- exactly the kind
-          -- of client-only, network-condition-sensitive bug that wouldn't
-          -- show up with two same-machine instances but would with real
-          -- remote players. Deriving the index from the trainerId instead,
-          -- in a range (100000+) far above anything real Gen1 map data
-          -- uses, makes it stable and guaranteed-unique per player instead
-          -- of dependent on local NPC list size.
-          local pNpc = NPC.new(game.data, ow.map.id, {
-            index = 100000 + (tonumber(tid) or 0) % 90000,
-            name = data.name or "TRAINER",
-            sprite = "SPRITE_RED",
-            movement = "STAY",
-            range = "NONE",
-            x = originX,
-            y = originY,
-          })
-          pNpc.trainerId = tid
-          pNpc.isCoopPlayer = true
-          pNpc.passable = false
-          pNpc.px = originPx
-          pNpc.py = originPy
-          pNpc.targetPx = targetPx
-          pNpc.targetPy = targetPy
-          pNpc.cellX = originX
-          pNpc.cellY = originY
-          pNpc.targetCellX = destX
-          pNpc.targetCellY = destY
-          pNpc.facing = facing
-          pNpc.update = function(self, dt, map, entities) end
-
-          -- FIX: Explicitly attach a SpriteRenderer for SPRITE_RED
-          local spriteDef = game.data.sprites and game.data.sprites["SPRITE_RED"]
-          if spriteDef then
-            pNpc.sprite = SpriteRenderer.new(spriteDef, pNpc.id)
-            print("[DEBUG] Attached SPRITE_RED renderer to remote player " .. tid)
-          else
-            print("[WARN] SPRITE_RED definition missing for remote player " .. tid)
-          end
-
-          table.insert(ow.npcs, pNpc)
-          table.insert(ow.entities, pNpc)
-          netNpcs[tid] = pNpc
-        end
-
-        -- 2. CONTINUOUS MOVEMENT TARGET UPDATES
-        local pNpc = netNpcs[tid]
-        if pNpc.targetPx ~= targetPx or pNpc.targetPy ~= targetPy then
-          pNpc.targetPx = targetPx
-          pNpc.targetPy = targetPy
-          pNpc.targetCellX = destX
-          pNpc.targetCellY = destY
-          pNpc.moving = true
-        end
-        pNpc.facing = facing
-
-        -- 3. CONTINUOUS FOLLOWER TARGET UPDATES
-        if data.species then
-          local spriteId = "SPRITE_WILD_" .. tostring(data.species)
-          local spriteDef = game.data and game.data.sprites and game.data.sprites[spriteId]
-          if spriteDef then
-            if not netFollowers[tid] then
-              -- Same fix as the player avatar above: derive a stable,
-              -- unique index from the trainerId (offset into a different
-              -- 100000+ range so followers never collide with player
-              -- avatars) instead of the local, order-dependent #ow.npcs.
-              local fNpc = NPC.new(game.data, ow.map.id, {
-                index = 200000 + (tonumber(tid) or 0) % 90000,
-                name = tostring(data.species),
-                sprite = spriteId,
-                movement = "STAY",
-                range = "NONE",
-                x = fCellX,
-                y = fCellY,
-              })
-              fNpc.trainerId = tid
-              fNpc.spriteId = spriteId
-              fNpc.isCoopFollower = true
-              fNpc.passable = false
-              fNpc.px = fTargetPx
-              fNpc.py = fTargetPy
-              fNpc.targetPx = fTargetPx
-              fNpc.targetPy = fTargetPy
-              fNpc.cellX = fCellX
-              fNpc.cellY = fCellY
-              fNpc.targetCellX = fCellX
-              fNpc.targetCellY = fCellY
-              fNpc.facing = facing
-              fNpc.update = function(self, dt, map, entities) end
-              table.insert(ow.npcs, fNpc)
-              table.insert(ow.entities, fNpc)
-              netFollowers[tid] = fNpc
-            elseif netFollowers[tid].spriteId ~= spriteId then
-              netFollowers[tid].spriteId = spriteId
-              netFollowers[tid].sprite = SpriteRenderer.new(spriteDef, netFollowers[tid].id)
+            local originX = destX
+            local originY = destY
+            if isMoving then
+                local delta = Collision.DELTA[facing] or { 0, 1 }
+                originX = destX - delta[1]
+                originY = destY - delta[2]
             end
 
-            local fNpc = netFollowers[tid]
-            if fNpc.targetPx ~= fTargetPx or fNpc.targetPy ~= fTargetPy then
-              fNpc.targetPx = fTargetPx
-              fNpc.targetPy = fTargetPy
-              fNpc.targetCellX = fCellX
-              fNpc.targetCellY = fCellY
-              fNpc.moving = true
+            local targetPx = destX * 16
+            local targetPy = destY * 16
+            local originPx = originX * 16
+            local originPy = originY * 16
+
+            local fCellX = data.fx or originX
+            local fCellY = data.fy or originY
+            local fTargetPx = fCellX * 16
+            local fTargetPy = fCellY * 16
+
+            -- 1. Create NPC Avatar on Initial Spawn
+            if not netNpcs[tid] then
+                print("[DEBUG] Creating NPC for player " .. tid .. " at " .. originX .. "," .. originY)
+                local pNpc = NPC.new(game.data, ow.map.id, {
+                    index = 100000 + (tonumber(tid) or 0) % 90000,
+                    name = data.name or "TRAINER",
+                    sprite = "SPRITE_RED",
+                    movement = "STAY",
+                    range = "NONE",
+                    x = originX,
+                    y = originY,
+                })
+                pNpc.trainerId = tid
+                pNpc.isCoopPlayer = true
+                pNpc.passable = false
+                pNpc.px = originPx
+                pNpc.py = originPy
+                pNpc.targetPx = targetPx
+                pNpc.targetPy = targetPy
+                pNpc.cellX = originX
+                pNpc.cellY = originY
+                pNpc.targetCellX = destX
+                pNpc.targetCellY = destY
+                pNpc.facing = facing
+                pNpc.update = function(self, dt, map, entities) end
+
+                -- Attach SpriteRenderer
+                local spriteDef = game.data.sprites and game.data.sprites["SPRITE_RED"]
+                if spriteDef then
+                    pNpc.sprite = SpriteRenderer.new(spriteDef, pNpc.id)
+                    print("[DEBUG] Attached SPRITE_RED renderer to player " .. tid)
+                else
+                    -- FALLBACK: create a solid red square to see if the NPC exists
+                    local fallbackImage = love.graphics.newImage(love.image.newImageData(16, 16, "rgba8", {255,0,0,255}))
+                    local fallbackDef = { id = "FALLBACK", image = fallbackImage, frames = 1, walker = false, trueColor = true }
+                    pNpc.sprite = SpriteRenderer.new(fallbackDef, pNpc.id)
+                    print("[WARN] SPRITE_RED missing for " .. tid .. " – using red square")
+                end
+
+                table.insert(ow.npcs, pNpc)
+                table.insert(ow.entities, pNpc)
+                netNpcs[tid] = pNpc
+                print("[DEBUG] NPC for player " .. tid .. " added to entities. Total remote NPCs: " .. #ow.entities)
             end
-            fNpc.facing = facing
-          else
-            removeNetPlayer(ow, tid)
-          end
+
+            -- 2. CONTINUOUS MOVEMENT TARGET UPDATES
+            local pNpc = netNpcs[tid]
+            if pNpc.targetPx ~= targetPx or pNpc.targetPy ~= targetPy then
+                pNpc.targetPx = targetPx
+                pNpc.targetPy = targetPy
+                pNpc.targetCellX = destX
+                pNpc.targetCellY = destY
+                pNpc.moving = true
+            end
+            pNpc.facing = facing
+
+            -- 3. CONTINUOUS FOLLOWER TARGET UPDATES
+            if data.species then
+                local spriteId = "SPRITE_WILD_" .. tostring(data.species)
+                local spriteDef = game.data and game.data.sprites and game.data.sprites[spriteId]
+                if spriteDef then
+                    if not netFollowers[tid] then
+                        local fNpc = NPC.new(game.data, ow.map.id, {
+                            index = 200000 + (tonumber(tid) or 0) % 90000,
+                            name = tostring(data.species),
+                            sprite = spriteId,
+                            movement = "STAY",
+                            range = "NONE",
+                            x = fCellX,
+                            y = fCellY,
+                        })
+                        fNpc.trainerId = tid
+                        fNpc.spriteId = spriteId
+                        fNpc.isCoopFollower = true
+                        fNpc.passable = false
+                        fNpc.px = fTargetPx
+                        fNpc.py = fTargetPy
+                        fNpc.targetPx = fTargetPx
+                        fNpc.targetPy = fTargetPy
+                        fNpc.cellX = fCellX
+                        fNpc.cellY = fCellY
+                        fNpc.targetCellX = fCellX
+                        fNpc.targetCellY = fCellY
+                        fNpc.facing = facing
+                        fNpc.update = function(self, dt, map, entities) end
+                        table.insert(ow.npcs, fNpc)
+                        table.insert(ow.entities, fNpc)
+                        netFollowers[tid] = fNpc
+                    elseif netFollowers[tid].spriteId ~= spriteId then
+                        netFollowers[tid].spriteId = spriteId
+                        netFollowers[tid].sprite = SpriteRenderer.new(spriteDef, netFollowers[tid].id)
+                    end
+
+                    local fNpc = netFollowers[tid]
+                    if fNpc.targetPx ~= fTargetPx or fNpc.targetPy ~= fTargetPy then
+                        fNpc.targetPx = fTargetPx
+                        fNpc.targetPy = fTargetPy
+                        fNpc.targetCellX = fCellX
+                        fNpc.targetCellY = fCellY
+                        fNpc.moving = true
+                    end
+                    fNpc.facing = facing
+                else
+                    removeNetPlayer(ow, tid)
+                end
+            end
+        else
+            -- Remote player is on a different map – remove their NPCs if they exist
+            if netNpcs[tid] then
+                print("[DEBUG] Removing NPC for player " .. tid .. " because map mismatch (" .. remoteMapId .. " != " .. currentMapId .. ")")
+                removeNetPlayer(ow, tid)
+            end
         end
-      else
-        removeNetPlayer(ow, tid)
-      end
     end
 
-    -- Clean Memory Leak
+    -- Clean Memory Leak – remove NPCs for players no longer in the list
     for tid, _ in pairs(netNpcs) do
-      if not activeIds[tid] then
-        removeNetPlayer(ow, tid)
-      end
+        if not activeIds[tid] then
+            print("[DEBUG] Removing NPC for player " .. tid .. " (no longer in active list)")
+            removeNetPlayer(ow, tid)
+        end
+    end
+
+    -- Optional: print total remote NPC count every 5 seconds
+    local now = os.time()
+    if now - remoteCountLogTime >= 5 then
+        print("[DEBUG] Remote NPC count: " .. #netNpcs)
+        remoteCountLogTime = now
     end
   end
 
