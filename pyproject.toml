@@ -5,7 +5,9 @@ description = "Gen1Online GTS & MMO server (Python side): server + migration too
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "fastapi>=0.115",
     "psycopg[binary]>=3.2",
+    "uvicorn[standard]>=0.30",
 ]
 
 [project.scripts]
