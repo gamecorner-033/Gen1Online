@@ -7,6 +7,7 @@ signature ``(storage, now, req) -> (status_code, payload)``.
 import logging
 
 from gen1online.config import CHALLENGE_TTL_SECONDS, PLAYER_TIMEOUT_SECONDS, SYNC_PLAYERS_PER_MAP
+from gen1online.metrics import METRICS
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,9 @@ def players(storage):
 def sync_pos(storage, now, req):
     trainer_id = str(req.get("trainerId"))
     map_id = req.get("map")
+
+    if METRICS.is_banned(trainer_id)[0]:
+        return 403, {"success": False, "error": "KICKED/BANNED"}
 
     player_entry = {
         "trainerId": trainer_id,
@@ -43,6 +47,8 @@ def sync_pos(storage, now, req):
 
     if trainer_id not in storage.db["active_players"]:
         logger.info(f"PLAYER JOINED id={trainer_id} name={req.get('name')!r} map={map_id!r}")
+        storage.bump_daily_stat("joins")
+        METRICS.refresh_online(storage)
     storage.db["active_players"][trainer_id] = player_entry
 
     # Fast cleanup for inactive players (> 30s)
@@ -64,7 +70,8 @@ def sync_pos(storage, now, req):
         storage.db["pending_challenges"].pop(trainer_id, None)
         challenge = None
 
-    return 200, {"success": True, "players": map_players, "challenge": challenge}
+    return 200, {"success": True, "players": map_players, "challenge": challenge,
+                 "announcement": storage.db.get("announcement")}
 
 
 def send_challenge(storage, now, req):

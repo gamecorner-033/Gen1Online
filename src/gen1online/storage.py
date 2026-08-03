@@ -16,11 +16,13 @@ from psycopg.types.json import Jsonb
 from gen1online.config import (
     CHALLENGE_TTL_SECONDS,
     CLAIM_TTL_SECONDS,
+    DB_CONNECT_TIMEOUT,
     DB_URI,
     HISTORY_LIMIT,
     LISTING_TTL_SECONDS,
     PLAYER_TIMEOUT_SECONDS,
 )
+from gen1online.metrics import METRICS
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +57,12 @@ CREATE TABLE IF NOT EXISTS profiles (
     trainer_id TEXT PRIMARY KEY,
     data       JSONB NOT NULL
 );
+CREATE TABLE IF NOT EXISTS daily_counts (
+    day   TEXT NOT NULL,
+    stat  TEXT NOT NULL,
+    value INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, stat)
+);
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -79,7 +87,7 @@ class Storage:
         self._last_pg_clean = 0.0
 
     def connect(self):
-        return psycopg.connect(DB_URI)
+        return psycopg.connect(DB_URI, connect_timeout=DB_CONNECT_TIMEOUT)
 
     def init_db(self):
         """Create the PostgreSQL schema if it does not exist yet."""
@@ -144,6 +152,29 @@ class Storage:
         )
         return cur.fetchone()[0]
 
+    def _bump_daily(self, cur, stat):
+        """Increment a daily counter for today (inside an existing transaction)."""
+        cur.execute(
+            """INSERT INTO daily_counts (day, stat, value) VALUES (%s, %s, 1)
+               ON CONFLICT (day, stat) DO UPDATE SET value = daily_counts.value + 1""",
+            (time.strftime("%Y-%m-%d"), stat),
+        )
+
+    def bump_daily_stat(self, stat):
+        """Increment a daily counter for today (own transaction; low-frequency events)."""
+        with self.connect() as conn, conn.cursor() as cur:
+            self._bump_daily(cur, stat)
+
+    def get_daily_stats(self, days=7):
+        """Return rows of (day, stat, value) for the last ``days`` days."""
+        cutoff = time.strftime("%Y-%m-%d", time.localtime(time.time() - (days - 1) * 86400))
+        with self.connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT day, stat, value FROM daily_counts WHERE day >= %s ORDER BY day, stat",
+                (cutoff,),
+            )
+            return cur.fetchall()
+
     def persist_deposit(self, listing, receipt_text):
         """Atomically insert a listing, bump the depositor count, and log a receipt."""
         with self.connect() as conn, conn.cursor() as cur:
@@ -155,6 +186,7 @@ class Storage:
             )
             count = self._bump_user_count(cur, listing["trainerId"], 1)
             cur.execute("INSERT INTO history (text, ts) VALUES (%s, %s)", (receipt_text, int(time.time())))
+            self._bump_daily(cur, "deposits")
         return count
 
     def persist_trade(self, listing, claim_row, receipt_text):
@@ -172,6 +204,7 @@ class Storage:
                  claim_row["originalOffered"], int(time.time())),
             )
             cur.execute("INSERT INTO history (text, ts) VALUES (%s, %s)", (receipt_text, int(time.time())))
+            self._bump_daily(cur, "trades")
         return count
 
     def persist_withdraw(self, listing_id, trainer_id):
@@ -180,7 +213,19 @@ class Storage:
             cur.execute("DELETE FROM listings WHERE id = %s AND trainer_id = %s", (listing_id, trainer_id))
             if cur.rowcount == 0:
                 return None
-            return self._bump_user_count(cur, trainer_id, -1)
+            count = self._bump_user_count(cur, trainer_id, -1)
+            self._bump_daily(cur, "withdrawals")
+            return count
+
+    def remove_listing_admin(self, listing_id):
+        """Atomically remove a listing regardless of owner (admin). Returns new count or None."""
+        with self.connect() as conn, conn.cursor() as cur:
+            cur.execute("SELECT trainer_id FROM listings WHERE id = %s", (listing_id,))
+            row = cur.fetchone()
+            if not row:
+                return None
+            cur.execute("DELETE FROM listings WHERE id = %s", (listing_id,))
+            return self._bump_user_count(cur, row[0], -1)
 
     def persist_claim(self, trainer_id, idx):
         """Atomically remove the idx-th claim box row for trainer_id (insertion order preserved)."""
@@ -193,6 +238,7 @@ class Storage:
             if not row:
                 return False
             cur.execute("DELETE FROM claim_boxes WHERE id = %s", (row[0],))
+            self._bump_daily(cur, "claims")
         return True
 
     def persist_history(self, text):
@@ -227,10 +273,14 @@ class Storage:
 
         # In-memory purges (cheap, run on every request)
         # 1. Purge inactive online players (> 30 seconds timeout)
+        purged_player = False
         for tid, pdata in list(self.db.get("active_players", {}).items()):
             if now - pdata.get("timestamp", 0) > PLAYER_TIMEOUT_SECONDS:
                 self.db["active_players"].pop(tid, None)
+                purged_player = True
                 logger.info(f"PLAYER LEFT id={tid} name={pdata.get('name')!r} (idle {now - pdata.get('timestamp', 0)}s)")
+        if purged_player:
+            METRICS.refresh_online(self)
 
         # 2. Purge stale challenges (> 15 seconds old)
         for tid, cdata in list(self.db.get("pending_challenges", {}).items()):

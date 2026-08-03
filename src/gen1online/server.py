@@ -3,12 +3,14 @@
 import http.server
 import json
 import logging
+import secrets
 import socketserver
 import time
 import traceback
 
-from gen1online import config, gts, realtime
+from gen1online import admin, config, gts, realtime, stats as stats_mod
 from gen1online.logging_utils import setup_logging
+from gen1online.metrics import METRICS, render_prometheus
 from gen1online.ratelimit import RateLimiter
 from gen1online.storage import Storage
 
@@ -27,6 +29,15 @@ POST_HANDLERS = {
     "trade": gts.trade,
     "withdraw": gts.withdraw,
     "claim": gts.claim,
+}
+
+ADMIN_POST_HANDLERS = {
+    "kick": admin.admin_kick,
+    "ban": admin.admin_ban,
+    "unban": admin.admin_unban,
+    "remove_listing": admin.admin_remove_listing,
+    "announce": admin.admin_announce,
+    "clear_announcement": admin.admin_clear_announcement,
 }
 
 
@@ -65,6 +76,15 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_text(self, text, status=200, content_type="text/plain; charset=utf-8"):
+        body = text.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def _query_param(self, name):
         if "?" not in self.path:
             return None
@@ -73,36 +93,94 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 return p.split("=")[1]
         return None
 
+    def _admin_authorized(self):
+        """Return (ok, status, payload). Empty ADMIN_TOKEN disables the admin API."""
+        if not config.ADMIN_TOKEN:
+            return False, 403, {"error": "Admin API disabled (ADMIN_TOKEN not set)"}
+        auth = self.headers.get("Authorization", "")
+        if not auth.startswith("Bearer "):
+            return False, 401, {"error": "Missing Authorization: Bearer token"}
+        if secrets.compare_digest(auth[len("Bearer "):], config.ADMIN_TOKEN):
+            return True, 200, None
+        return False, 401, {"error": "Unauthorized"}
+
+    def _healthz(self):
+        try:
+            with self.storage.connect() as conn:
+                conn.execute("SELECT 1")
+            return 200, {"status": "ok"}
+        except Exception:
+            logger.warning(f"HEALTHZ DB PING FAILED:\n{traceback.format_exc()}")
+            return 503, {"status": "degraded"}
+
     def do_GET(self):
         client_ip = self.get_real_ip()
         if not self.rate_limiter.allowed(client_ip):
             logger.warning(f"RATE LIMIT EXCEEDED ip={client_ip} method=GET path={self.path}")
+            METRICS.inc_counter("rate_limited_total", {"method": "GET"})
             self._send_json({"error": "RATE LIMIT EXCEEDED"}, status=429)
             return
 
         self.storage.self_clean_db()
 
+        base_path = self.path.split("?")[0]
+        status = 500
+        payload = {"error": "Internal server error"}
         try:
-            if self.path == "/gts/browse" or self.path == "/gts" or self.path == "/":
+            if base_path == "/healthz":
+                status, payload = self._healthz()
+                self._send_json(payload, status)
+            elif base_path == "/metrics":
+                self._send_text(render_prometheus(self.storage),
+                                content_type="text/plain; version=0.0.4; charset=utf-8")
+                status = 200
+                payload = None
+            elif base_path.startswith("/gts/admin"):
+                ok, status, payload = self._admin_authorized()
+                if ok:
+                    if base_path == "/gts/admin/players":
+                        status, payload = admin.admin_players(self.storage)
+                    elif base_path == "/gts/admin/bans":
+                        status, payload = admin.admin_bans(self.storage)
+                    elif base_path == "/gts/admin/announcement":
+                        status, payload = admin.admin_announcement(self.storage)
+                    else:
+                        status, payload = 404, {"error": "Unknown admin view"}
+                    self._send_json(payload, status)
+                else:
+                    self._send_json(payload, status)
+            elif base_path == "/gts/stats":
+                status, payload = stats_mod.stats(self.storage)
+                self._send_json(payload, status)
+            elif base_path == "/gts/browse" or base_path == "/gts" or base_path == "/":
                 status, payload = gts.browse(self.storage)
-            elif self.path.startswith("/gts/players"):
+                self._send_json(payload, status)
+            elif base_path.startswith("/gts/players"):
                 status, payload = realtime.players(self.storage)
-            elif self.path.startswith("/gts/profile"):
+                self._send_json(payload, status)
+            elif base_path.startswith("/gts/profile"):
                 status, payload = gts.profile(self.storage, self._query_param("trainerId"))
-            elif self.path.startswith("/gts/claims"):
+                self._send_json(payload, status)
+            elif base_path.startswith("/gts/claims"):
                 status, payload = gts.claims(self.storage, self._query_param("trainerId"))
+                self._send_json(payload, status)
             else:
                 status, payload = 404, {"error": "Endpoint not found"}
+                self._send_json(payload, status)
         except Exception:
             logger.error(f"Unhandled error on GET {self.path}:\n{traceback.format_exc()}")
-            status, payload = 500, {"error": "Internal server error"}
-        self._send_json(payload, status)
+            self._send_json({"error": "Internal server error"}, status=500)
+            status = 500
+            payload = None
+
+        METRICS.inc_counter("http_requests_total", {"method": "GET", "action": base_path, "status": str(status)})
         logger.debug(f"GET {self.path} ip={client_ip} status={status}")
 
     def do_POST(self):
         client_ip = self.get_real_ip()
         if not self.rate_limiter.allowed(client_ip):
             logger.warning(f"RATE LIMIT EXCEEDED ip={client_ip} method=POST")
+            METRICS.inc_counter("rate_limited_total", {"method": "POST"})
             self._send_json({"error": "RATE LIMIT EXCEEDED"}, status=429)
             return
 
@@ -113,6 +191,32 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
         except Exception:
             logger.warning(f"INVALID JSON ip={client_ip} body={body[:200]!r}")
             self._send_json({"error": "Invalid JSON"}, status=400)
+            return
+
+        base_path = self.path.split("?")[0]
+        is_admin = base_path == "/gts/admin" or base_path.startswith("/gts/admin/")
+
+        if is_admin:
+            ok, status, payload = self._admin_authorized()
+            if not ok:
+                self._send_json(payload, status)
+                METRICS.inc_counter("http_requests_total", {"method": "POST", "action": "admin", "status": str(status)})
+                return
+            action = req.get("action")
+            handler = ADMIN_POST_HANDLERS.get(action)
+            if handler is None:
+                logger.warning(f"UNKNOWN ADMIN ACTION ip={client_ip} action={action!r}")
+                self._send_json({"error": "Unknown admin action"}, status=400)
+                return
+            now = int(time.time())
+            try:
+                status, payload = handler(self.storage, now, req)
+            except Exception:
+                logger.error(f"Unhandled error handling admin action={action} ip={client_ip}\n{traceback.format_exc()}")
+                status, payload = 500, {"error": "Internal server error"}
+            self._send_json(payload, status)
+            METRICS.inc_counter("http_requests_total", {"method": "POST", "action": f"admin/{action}", "status": str(status)})
+            logger.debug(f"POST admin action={action} ip={client_ip} status={status}")
             return
 
         action = req.get("action")
@@ -129,6 +233,7 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
             logger.error(f"Unhandled error handling action={action} ip={client_ip}\n{traceback.format_exc()}")
             status, payload = 500, {"error": "Internal server error"}
         self._send_json(payload, status)
+        METRICS.inc_counter("http_requests_total", {"method": "POST", "action": action, "status": str(status)})
         logger.debug(f"POST action={action} ip={client_ip} status={status} "
                      f"trainerId={req.get('trainerId') or req.get('fromId') or req.get('buyerId')!r}")
 
@@ -136,6 +241,7 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
 def run_server():
     setup_logging()
     logger.info(f"Log level: {config.LOG_LEVEL}")
+    logger.info(f"Admin API: {'ENABLED' if config.ADMIN_TOKEN else 'DISABLED (set ADMIN_TOKEN to enable)'}")
 
     storage = Storage()
     storage.init_db()
