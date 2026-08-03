@@ -112,7 +112,16 @@ return function(mod)
                       ["Content-Length"]=tostring(#body) },
           source = ltn12.source.string(body),
           sink   = ltn12.sink.table(resp_body),
-          timeout = 1.0
+          -- IMPORTANT: 1.0s was fine for same-PC/same-LAN testing (host running
+          -- two instances against its own tunnel), but real remote players go
+          -- through actual internet latency + a fresh TLS handshake on every
+          -- single request (nothing here keeps a connection alive). That can
+          -- easily exceed 1s, and a timed-out request just silently returns
+          -- nothing -- the remote player's sync_pos/poll quietly fails with no
+          -- error, which looks exactly like "can't see anyone." 3.5s gives
+          -- real-world remote connections room to complete without stalling
+          -- the loop indefinitely.
+          timeout = 3.5
         })
         if not ok then
           debugChan:push("HTTP POST error: " .. tostring(err))
@@ -499,7 +508,21 @@ return function(mod)
     local p = save and save.player
     if not p then return 12345, "TRAINER" end
     if not p.id then
-      p.id = math.random(10000, 99999)
+      -- IMPORTANT: plain math.random() is NOT auto-seeded by Lua/LOVE, so two
+      -- players who each roll their very first trainer ID around the same
+      -- point in their own process's (identical, unseeded) random sequence
+      -- can end up with the SAME id. Since the server keys active_players by
+      -- trainerId, a collision means one player's sync_pos overwrites the
+      -- other's entry, and each of them filters out anything matching "self"
+      -- -- which now also matches the other player -- making them invisible
+      -- to each other. love.math's RNG is auto-seeded per-process (time+PID)
+      -- by LOVE itself, so it doesn't collide across separate machines.
+      if _G.love and _G.love.math and _G.love.math.random then
+        p.id = love.math.random(10000, 99999)
+      else
+        math.randomseed(os.time() + math.floor((os.clock() or 0) * 1000000))
+        p.id = math.random(10000, 99999)
+      end
     end
     return p.id, p.name or "TRAINER"
   end
@@ -819,8 +842,24 @@ return function(mod)
 
         -- 1. Create NPC Avatar on Initial Spawn
         if not netNpcs[tid] then
+          -- IMPORTANT: index used to be `290 + (#ow.npcs % 50)` -- derived
+          -- from the LOCAL client's own already-loaded NPC count, which has
+          -- nothing to do with the remote player being spawned. Pallet Town
+          -- (and most maps) already ship several vanilla NPCs, so #ow.npcs
+          -- varies per client/map-state, and this index feeds NPC.new's
+          -- self.id ("<map>_obj_<index>"), which the game's own object
+          -- registration keys off of. A collision with a real ROM NPC's
+          -- index (or, with 2+ remote players, a collision between two
+          -- network avatars computed from the same local #ow.npcs) can
+          -- silently fail to render rather than error -- exactly the kind
+          -- of client-only, network-condition-sensitive bug that wouldn't
+          -- show up with two same-machine instances but would with real
+          -- remote players. Deriving the index from the trainerId instead,
+          -- in a range (100000+) far above anything real Gen1 map data
+          -- uses, makes it stable and guaranteed-unique per player instead
+          -- of dependent on local NPC list size.
           local pNpc = NPC.new(game.data, ow.map.id, {
-            index = 290 + (#ow.npcs % 50),
+            index = 100000 + (tonumber(tid) or 0) % 90000,
             name = data.name or "TRAINER",
             sprite = "SPRITE_RED",
             movement = "STAY",
@@ -863,8 +902,12 @@ return function(mod)
           local spriteDef = game.data and game.data.sprites and game.data.sprites[spriteId]
           if spriteDef then
             if not netFollowers[tid] then
+              -- Same fix as the player avatar above: derive a stable,
+              -- unique index from the trainerId (offset into a different
+              -- 100000+ range so followers never collide with player
+              -- avatars) instead of the local, order-dependent #ow.npcs.
               local fNpc = NPC.new(game.data, ow.map.id, {
-                index = 350 + (#ow.npcs % 50),
+                index = 200000 + (tonumber(tid) or 0) % 90000,
                 name = tostring(data.species),
                 sprite = spriteId,
                 movement = "STAY",
@@ -1669,6 +1712,55 @@ return function(mod)
 
     -- Continuous frame service for background thread battle messages
     processGlobalThreadMessages(game)
+
+    -- KEEPALIVE POSITION BROADCAST:
+    -- StateStack:update() only calls update() on the TOP of the state stack.
+    -- OverworldState.update (where sync_pos normally fires every movement /
+    -- 100ms) therefore does NOT run at all while any Menu, TextBox, or other
+    -- screen is on top -- e.g. sitting in the CO-OP ONLINE menu, browsing the
+    -- GTS, or reading a confirmation textbox. The server purges anyone whose
+    -- sync_pos goes quiet for 30+ seconds (PLAYER_TIMEOUT_SECONDS in
+    -- gts_server.py), so a player who lingers in a menu vanishes from
+    -- everyone else's player list even though they're still fully connected.
+    -- This hook runs unconditionally every frame regardless of what's on top
+    -- of the stack, so it keeps a low-rate position ping alive whenever the
+    -- normal overworld-driven sync isn't running.
+    if isGtsServerConnected and not isWaitingForChallenge and game.overworld
+       and game.overworld.player and game.overworld.map and netOutChannel then
+      local ow = game.overworld
+      local p = ow.player
+      local now = (_G.love and _G.love.timer and _G.love.timer.getTime) and _G.love.timer.getTime() or os.time()
+      if now - lastSendTime >= 0.10 then
+        lastSendTime = now
+        lastPlayerX = p.cellX
+        lastPlayerY = p.cellY
+        lastPlayerMap = ow.map.id
+
+        local trainerId, trainerName = getTrainerInfo(game.save)
+        local followerSpecies = game.save.party and game.save.party[1] and game.save.party[1].species
+        local delta = Collision.DELTA[p.facing] or { 0, 1 }
+
+        netOutChannel:push({
+          url = GTS_SERVER_URL .. "/gts",
+          body = Json.encode({
+            action = "sync_pos",
+            trainerId = trainerId,
+            name = trainerName,
+            title = localTrainerTitle,
+            map = ow.map.id,
+            x = p.cellX,
+            y = p.cellY,
+            px = p.px,
+            py = p.py,
+            fx = p.cellX - delta[1],
+            fy = p.cellY - delta[2],
+            facing = p.facing,
+            moving = false,
+            species = followerSpecies
+          })
+        })
+      end
+    end
 
     -- Optional: print any debug messages from the thread
     printThreadDebug()
