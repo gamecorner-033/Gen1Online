@@ -1,3 +1,4 @@
+-- zip test
 return function(mod)
   print("[Gen1Online] Initializing Gen1Online Asynchronous Threaded 60FPS MMO Mod...")
 
@@ -112,15 +113,6 @@ return function(mod)
                       ["Content-Length"]=tostring(#body) },
           source = ltn12.source.string(body),
           sink   = ltn12.sink.table(resp_body),
-          -- IMPORTANT: 1.0s was fine for same-PC/same-LAN testing (host running
-          -- two instances against its own tunnel), but real remote players go
-          -- through actual internet latency + a fresh TLS handshake on every
-          -- single request (nothing here keeps a connection alive). That can
-          -- easily exceed 1s, and a timed-out request just silently returns
-          -- nothing -- the remote player's sync_pos/poll quietly fails with no
-          -- error, which looks exactly like "can't see anyone." 3.5s gives
-          -- real-world remote connections room to complete without stalling
-          -- the loop indefinitely.
           timeout = 3.5
         })
         if not ok then
@@ -880,6 +872,16 @@ return function(mod)
           pNpc.targetCellY = destY
           pNpc.facing = facing
           pNpc.update = function(self, dt, map, entities) end
+
+          -- FIX: Explicitly attach a SpriteRenderer for SPRITE_RED
+          local spriteDef = game.data.sprites and game.data.sprites["SPRITE_RED"]
+          if spriteDef then
+            pNpc.sprite = SpriteRenderer.new(spriteDef, pNpc.id)
+            print("[DEBUG] Attached SPRITE_RED renderer to remote player " .. tid)
+          else
+            print("[WARN] SPRITE_RED definition missing for remote player " .. tid)
+          end
+
           table.insert(ow.npcs, pNpc)
           table.insert(ow.entities, pNpc)
           netNpcs[tid] = pNpc
