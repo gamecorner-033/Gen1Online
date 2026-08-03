@@ -76,7 +76,7 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         client_ip = self.get_real_ip()
         if not self.rate_limiter.allowed(client_ip):
-            logger.warning("RATE LIMIT EXCEEDED ip=%s method=GET path=%s", client_ip, self.path)
+            logger.warning(f"RATE LIMIT EXCEEDED ip={client_ip} method=GET path={self.path}")
             self._send_json({"error": "RATE LIMIT EXCEEDED"}, status=429)
             return
 
@@ -94,15 +94,15 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
             else:
                 status, payload = 404, {"error": "Endpoint not found"}
         except Exception:
-            logger.error("Unhandled error on GET %s:\n%s", self.path, traceback.format_exc())
+            logger.error(f"Unhandled error on GET {self.path}:\n{traceback.format_exc()}")
             status, payload = 500, {"error": "Internal server error"}
         self._send_json(payload, status)
-        logger.debug("GET %s ip=%s status=%d", self.path, client_ip, status)
+        logger.debug(f"GET {self.path} ip={client_ip} status={status}")
 
     def do_POST(self):
         client_ip = self.get_real_ip()
         if not self.rate_limiter.allowed(client_ip):
-            logger.warning("RATE LIMIT EXCEEDED ip=%s method=POST", client_ip)
+            logger.warning(f"RATE LIMIT EXCEEDED ip={client_ip} method=POST")
             self._send_json({"error": "RATE LIMIT EXCEEDED"}, status=429)
             return
 
@@ -111,14 +111,14 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
         try:
             req = json.loads(body)
         except Exception:
-            logger.warning("INVALID JSON ip=%s body=%r", client_ip, body[:200])
+            logger.warning(f"INVALID JSON ip={client_ip} body={body[:200]!r}")
             self._send_json({"error": "Invalid JSON"}, status=400)
             return
 
         action = req.get("action")
         handler = POST_HANDLERS.get(action)
         if handler is None:
-            logger.warning("UNKNOWN ACTION ip=%s action=%r", client_ip, action)
+            logger.warning(f"UNKNOWN ACTION ip={client_ip} action={action!r}")
             self._send_json({"error": "Unknown action"}, status=400)
             return
 
@@ -126,17 +126,16 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
         try:
             status, payload = handler(self.storage, now, req)
         except Exception:
-            logger.error("Unhandled error handling action=%s ip=%s\n%s",
-                         action, client_ip, traceback.format_exc())
+            logger.error(f"Unhandled error handling action={action} ip={client_ip}\n{traceback.format_exc()}")
             status, payload = 500, {"error": "Internal server error"}
         self._send_json(payload, status)
-        logger.debug("POST action=%s ip=%s status=%d trainerId=%r",
-                     action, client_ip, status, req.get("trainerId") or req.get("fromId") or req.get("buyerId"))
+        logger.debug(f"POST action={action} ip={client_ip} status={status} "
+                     f"trainerId={req.get('trainerId') or req.get('fromId') or req.get('buyerId')!r}")
 
 
 def run_server():
     setup_logging()
-    logger.info("Log level: %s", config.LOG_LEVEL)
+    logger.info(f"Log level: {config.LOG_LEVEL}")
 
     storage = Storage()
     storage.init_db()
@@ -146,12 +145,12 @@ def run_server():
     with ThreadedTCPServer((config.HOST, config.PORT), GTSHandler) as httpd:
         httpd.storage = storage
         httpd.rate_limiter = RateLimiter()
-        logger.info("Gen1Online Fast High-Performance Server (Port %s)", config.PORT)
+        logger.info(f"Gen1Online Fast High-Performance Server (Port {config.PORT})")
         logger.info("Live Network Challenges: ENABLED (PVP & Link Trade)")
         logger.info("Guaranteed Challenge Delivery: ENABLED")
         logger.info("Multi-Room Lockstep Battle System: ENABLED")
         logger.info("In-Memory Position Sync: ENABLED (<1ms latency)")
-        logger.info("PostgreSQL persistence: ENABLED (%s)", config.DB_URI)
+        logger.info(f"PostgreSQL persistence: ENABLED ({config.DB_URI})")
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:

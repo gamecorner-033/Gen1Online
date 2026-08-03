@@ -86,9 +86,9 @@ def main(argv=None):
             (str(max_num),),
         )
 
-    logger.info("Migration complete: imported %d listings, %d history entries, %d profiles into %s",
-                len(data.get("listings", {})), len(data.get("history", [])),
-                len(data.get("profiles", {})), DB_URI)
+    logger.info(f"Migration complete: imported {len(data.get('listings', {}))} listings, "
+                f"{len(data.get('history', []))} history entries, "
+                f"{len(data.get('profiles', {}))} profiles into {DB_URI}")
 
 
 if __name__ == "__main__":

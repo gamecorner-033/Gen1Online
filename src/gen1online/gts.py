@@ -37,7 +37,7 @@ def claims(storage, trainer_id):
 
 def log_trade_receipt(storage, now, req):
     text = req.get("text", "LINK TRADE COMPLETED")
-    logger.info("TRADE RECEIPT id=%s: %s", req.get("trainerId"), text)
+    logger.info(f"TRADE RECEIPT id={req.get('trainerId')}: {text}")
     storage.persist_history(text)
     storage.add_receipt(text)
     return 200, {"success": True}
@@ -75,10 +75,9 @@ def update_profile(storage, now, req):
     storage.db["profiles"][trainer_id] = profile
     storage.persist_profile(trainer_id, profile)
 
-    logger.info("PROFILE UPDATE id=%s name=%r badges=%s pokedex=%s trades=%s pvp=%s fav=%r",
-                trainer_id, profile.get("name"), profile.get("badges"),
-                profile.get("pokedexCount"), profile.get("gtsTrades"),
-                profile.get("pvpWins"), profile.get("favoriteMon"))
+    logger.info(f"PROFILE UPDATE id={trainer_id} name={profile.get('name')!r} badges={profile.get('badges')} "
+                f"pokedex={profile.get('pokedexCount')} trades={profile.get('gtsTrades')} "
+                f"pvp={profile.get('pvpWins')} fav={profile.get('favoriteMon')!r}")
 
     return 200, {"success": True, "profile": profile}
 
@@ -91,7 +90,7 @@ def deposit(storage, now, req):
 
     current_count = storage.db["user_counts"].get(trainer_id, 0)
     if current_count >= DEPOSIT_LIMIT:
-        logger.warning("DEPOSIT REJECTED (limit %d) id=%s name=%r", DEPOSIT_LIMIT, trainer_id, trainer_name)
+        logger.warning(f"DEPOSIT REJECTED (limit {DEPOSIT_LIMIT}) id={trainer_id} name={trainer_name!r}")
         return 400, {"success": False, "error": "MAX 3 DEPOSITS REACHED"}
 
     list_id = f"GTS_{storage.get_next_id()}"
@@ -113,7 +112,7 @@ def deposit(storage, now, req):
     storage.db["user_counts"][trainer_id] = new_count
     storage.add_receipt(receipt)
 
-    logger.info("DEPOSIT id=%s mon=%r LV%s wanted=%r", trainer_id, mon_name, offered_mon.get("level", 1), wanted)
+    logger.info(f"DEPOSIT id={trainer_id} mon={mon_name!r} LV{offered_mon.get('level', 1)} wanted={wanted!r}")
 
     return 200, {"success": True, "listing": listing}
 
@@ -151,7 +150,7 @@ def trade(storage, now, req):
     storage.db["claim_boxes"].setdefault(seller_id, []).append(claim_row)
     storage.add_receipt(receipt)
 
-    logger.info("TRADE listing=%s buyer=%s (%s) sent=%r for=%r", list_id, buyer_id, buyer_name, sent_name, off_name)
+    logger.info(f"TRADE listing={list_id} buyer={buyer_id} ({buyer_name}) sent={sent_name!r} for={off_name!r}")
 
     return 200, {"success": True, "receivedMon": offered}
 
@@ -164,13 +163,13 @@ def withdraw(storage, now, req):
         listing = storage.db["listings"][list_id]
         new_count = storage.persist_withdraw(list_id, trainer_id)
         if new_count is None:
-            logger.warning("WITHDRAW FAILED listing=%s id=%s (gone)", list_id, trainer_id)
+            logger.warning(f"WITHDRAW FAILED listing={list_id} id={trainer_id} (gone)")
             return 404, {"success": False, "error": "Listing not found or unauthorized"}
         storage.db["listings"].pop(list_id, None)
         storage.db["user_counts"][trainer_id] = new_count
-        logger.info("WITHDRAW listing=%s id=%s", list_id, trainer_id)
+        logger.info(f"WITHDRAW listing={list_id} id={trainer_id}")
         return 200, {"success": True, "returnedMon": listing["offeredMon"]}
-    logger.warning("WITHDRAW FAILED listing=%s id=%s (not found or unauthorized)", list_id, trainer_id)
+    logger.warning(f"WITHDRAW FAILED listing={list_id} id={trainer_id} (not found or unauthorized)")
     return 404, {"success": False, "error": "Listing not found or unauthorized"}
 
 
@@ -181,10 +180,10 @@ def claim(storage, now, req):
     claims = storage.db["claim_boxes"].get(trainer_id, [])
     if 0 <= claim_idx < len(claims):
         if not storage.persist_claim(trainer_id, claim_idx):
-            logger.warning("CLAIM FAILED id=%s index=%s (db mismatch)", trainer_id, claim_idx)
+            logger.warning(f"CLAIM FAILED id={trainer_id} index={claim_idx} (db mismatch)")
             return 404, {"error": "Claim not found"}
         claimed = claims.pop(claim_idx)
-        logger.info("CLAIM id=%s index=%s mon=%r", trainer_id, claim_idx, claimed["mon"])
+        logger.info(f"CLAIM id={trainer_id} index={claim_idx} mon={claimed['mon']!r}")
         return 200, {"success": True, "claimedMon": claimed["mon"]}
-    logger.warning("CLAIM FAILED id=%s index=%s (out of range)", trainer_id, claim_idx)
+    logger.warning(f"CLAIM FAILED id={trainer_id} index={claim_idx} (out of range)")
     return 404, {"error": "Claim not found"}

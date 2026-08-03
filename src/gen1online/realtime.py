@@ -42,7 +42,7 @@ def sync_pos(storage, now, req):
     }
 
     if trainer_id not in storage.db["active_players"]:
-        logger.info("PLAYER JOINED id=%s name=%r map=%r", trainer_id, req.get("name"), map_id)
+        logger.info(f"PLAYER JOINED id={trainer_id} name={req.get('name')!r} map={map_id!r}")
     storage.db["active_players"][trainer_id] = player_entry
 
     # Fast cleanup for inactive players (> 30s)
@@ -84,8 +84,7 @@ def send_challenge(storage, now, req):
         "timestamp": now,
     }
 
-    logger.info("CHALLENGE SENT from=%s (%s) to=%s type=%s room=%s",
-                from_id, from_name, target_id, challenge_type, room_id)
+    logger.info(f"CHALLENGE SENT from={from_id} ({from_name}) to={target_id} type={challenge_type} room={room_id}")
 
     return 200, {
         "success": True,
@@ -97,7 +96,7 @@ def send_challenge(storage, now, req):
 def clear_challenge(storage, now, req):
     trainer_id = str(req.get("trainerId"))
     if trainer_id in storage.db["pending_challenges"]:
-        logger.info("CHALLENGE CLEARED id=%s", trainer_id)
+        logger.info(f"CHALLENGE CLEARED id={trainer_id}")
     storage.db["pending_challenges"].pop(trainer_id, None)
     return 200, {"success": True}
 
@@ -113,7 +112,7 @@ def send_battle_msg(storage, now, req):
         storage.db["battle_rooms"][room_id][target_id] = []
 
     storage.db["battle_rooms"][room_id][target_id].append(msg)
-    logger.debug("BATTLE MSG room=%s target=%s from=%s len=%d", room_id, target_id, req.get("fromId"), len(msg or ""))
+    logger.debug(f"BATTLE MSG room={room_id} target={target_id} from={req.get('fromId')} len={len(msg or '')}")
     return 200, {"success": True}
 
 
@@ -131,6 +130,6 @@ def poll_battle_msgs(storage, now, req):
 def clear_battle_room(storage, now, req):
     room_id = str(req.get("roomId"))
     if room_id in storage.db["battle_rooms"]:
-        logger.info("BATTLE ROOM CLEARED room=%s", room_id)
+        logger.info(f"BATTLE ROOM CLEARED room={room_id}")
     storage.db["battle_rooms"].pop(room_id, None)
     return 200, {"success": True}
