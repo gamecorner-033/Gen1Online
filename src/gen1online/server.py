@@ -2,12 +2,17 @@
 
 import http.server
 import json
+import logging
 import socketserver
 import time
+import traceback
 
 from gen1online import config, gts, realtime
+from gen1online.logging_utils import setup_logging
 from gen1online.ratelimit import RateLimiter
 from gen1online.storage import Storage
+
+logger = logging.getLogger(__name__)
 
 POST_HANDLERS = {
     "sync_pos": realtime.sync_pos,
@@ -71,26 +76,33 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         client_ip = self.get_real_ip()
         if not self.rate_limiter.allowed(client_ip):
+            logger.warning("RATE LIMIT EXCEEDED ip=%s method=GET path=%s", client_ip, self.path)
             self._send_json({"error": "RATE LIMIT EXCEEDED"}, status=429)
             return
 
         self.storage.self_clean_db()
 
-        if self.path == "/gts/browse" or self.path == "/gts" or self.path == "/":
-            status, payload = gts.browse(self.storage)
-        elif self.path.startswith("/gts/players"):
-            status, payload = realtime.players(self.storage)
-        elif self.path.startswith("/gts/profile"):
-            status, payload = gts.profile(self.storage, self._query_param("trainerId"))
-        elif self.path.startswith("/gts/claims"):
-            status, payload = gts.claims(self.storage, self._query_param("trainerId"))
-        else:
-            status, payload = 404, {"error": "Endpoint not found"}
+        try:
+            if self.path == "/gts/browse" or self.path == "/gts" or self.path == "/":
+                status, payload = gts.browse(self.storage)
+            elif self.path.startswith("/gts/players"):
+                status, payload = realtime.players(self.storage)
+            elif self.path.startswith("/gts/profile"):
+                status, payload = gts.profile(self.storage, self._query_param("trainerId"))
+            elif self.path.startswith("/gts/claims"):
+                status, payload = gts.claims(self.storage, self._query_param("trainerId"))
+            else:
+                status, payload = 404, {"error": "Endpoint not found"}
+        except Exception:
+            logger.error("Unhandled error on GET %s:\n%s", self.path, traceback.format_exc())
+            status, payload = 500, {"error": "Internal server error"}
         self._send_json(payload, status)
+        logger.debug("GET %s ip=%s status=%d", self.path, client_ip, status)
 
     def do_POST(self):
         client_ip = self.get_real_ip()
         if not self.rate_limiter.allowed(client_ip):
+            logger.warning("RATE LIMIT EXCEEDED ip=%s method=POST", client_ip)
             self._send_json({"error": "RATE LIMIT EXCEEDED"}, status=429)
             return
 
@@ -99,21 +111,33 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
         try:
             req = json.loads(body)
         except Exception:
+            logger.warning("INVALID JSON ip=%s body=%r", client_ip, body[:200])
             self._send_json({"error": "Invalid JSON"}, status=400)
             return
 
         action = req.get("action")
         handler = POST_HANDLERS.get(action)
         if handler is None:
+            logger.warning("UNKNOWN ACTION ip=%s action=%r", client_ip, action)
             self._send_json({"error": "Unknown action"}, status=400)
             return
 
         now = int(time.time())
-        status, payload = handler(self.storage, now, req)
+        try:
+            status, payload = handler(self.storage, now, req)
+        except Exception:
+            logger.error("Unhandled error handling action=%s ip=%s\n%s",
+                         action, client_ip, traceback.format_exc())
+            status, payload = 500, {"error": "Internal server error"}
         self._send_json(payload, status)
+        logger.debug("POST action=%s ip=%s status=%d trainerId=%r",
+                     action, client_ip, status, req.get("trainerId") or req.get("fromId") or req.get("buyerId"))
 
 
 def run_server():
+    setup_logging()
+    logger.info("Log level: %s", config.LOG_LEVEL)
+
     storage = Storage()
     storage.init_db()
     storage.load_db()
@@ -122,18 +146,16 @@ def run_server():
     with ThreadedTCPServer((config.HOST, config.PORT), GTSHandler) as httpd:
         httpd.storage = storage
         httpd.rate_limiter = RateLimiter()
-        print("======================================================")
-        print(f"  Gen1Online Fast High-Performance Server (Port {config.PORT})")
-        print(f"  Live Network Challenges: ENABLED (PVP & Link Trade)")
-        print(f"  Guaranteed Challenge Delivery: ENABLED")
-        print(f"  Multi-Room Lockstep Battle System: ENABLED")
-        print(f"  In-Memory Position Sync: ENABLED (<1ms latency)")
-        print(f"  PostgreSQL persistence: ENABLED ({config.DB_URI})")
-        print("======================================================")
+        logger.info("Gen1Online Fast High-Performance Server (Port %s)", config.PORT)
+        logger.info("Live Network Challenges: ENABLED (PVP & Link Trade)")
+        logger.info("Guaranteed Challenge Delivery: ENABLED")
+        logger.info("Multi-Room Lockstep Battle System: ENABLED")
+        logger.info("In-Memory Position Sync: ENABLED (<1ms latency)")
+        logger.info("PostgreSQL persistence: ENABLED (%s)", config.DB_URI)
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:
-            print("\n[GTS Cloud Server] Shutting down gracefully...")
+            logger.info("Shutting down gracefully...")
 
 
 if __name__ == "__main__":

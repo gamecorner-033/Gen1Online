@@ -5,6 +5,7 @@ import os
 HOST = os.environ.get("HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", 7779))
 DB_URI = os.environ.get("DATABASE_URL", "postgresql://gts:gts@localhost:5432/gts")
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 
 LISTING_TTL_SECONDS = 30 * 86400
 CLAIM_TTL_SECONDS = 60 * 86400

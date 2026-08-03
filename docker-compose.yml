@@ -19,6 +19,7 @@ services:
     environment:
       PORT: 7779
       DATABASE_URL: postgresql://${GTS_DB_USER:-gts}:${GTS_DB_PASSWORD:-gts}@postgres:5432/${GTS_DB_NAME:-gts}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
       - "127.0.0.1:7779:7779"
     depends_on:

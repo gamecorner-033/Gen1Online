@@ -7,6 +7,7 @@ Every mutation writes to Postgres transactionally first, then updates memory.
 stay in memory only (they are not part of the DB schema).
 """
 
+import logging
 import time
 
 import psycopg
@@ -20,6 +21,8 @@ from gen1online.config import (
     LISTING_TTL_SECONDS,
     PLAYER_TIMEOUT_SECONDS,
 )
+
+logger = logging.getLogger(__name__)
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS listings (
@@ -227,6 +230,7 @@ class Storage:
         for tid, pdata in list(self.db.get("active_players", {}).items()):
             if now - pdata.get("timestamp", 0) > PLAYER_TIMEOUT_SECONDS:
                 self.db["active_players"].pop(tid, None)
+                logger.info("PLAYER LEFT id=%s name=%r (idle %ds)", tid, pdata.get("name"), now - pdata.get("timestamp", 0))
 
         # 2. Purge stale challenges (> 15 seconds old)
         for tid, cdata in list(self.db.get("pending_challenges", {}).items()):
@@ -258,5 +262,6 @@ class Storage:
             )
 
         if purged_listings > 0 or purged_claims > 0:
-            print(f"[Self-Cleansing Engine] Purged {purged_listings} expired listings and {purged_claims} old claims.")
+            logger.info("Purged %d expired listings and %d old claims.",
+                        purged_listings, purged_claims)
             self.load_db()  # re-sync memory from PostgreSQL

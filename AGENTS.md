@@ -14,7 +14,8 @@ A mod for **Pokémon Gen 1 Recomp** (a LÖVE-based recomp with a mod system) tha
 
 ## Commands
 
-- Run server locally (uv): `uv sync && uv run gen1online-server` (or `uv run python -m gen1online`; binds `0.0.0.0:7779`, override with `HOST`/`PORT`). Env: `HOST` (default `0.0.0.0`), `PORT` (default 7779), `DATABASE_URL` (default `postgresql://gts:gts@localhost:5432/gts`). Requires a running Postgres.
+- Run server locally (uv): `uv sync && uv run gen1online-server` (or `uv run python -m gen1online`; binds `0.0.0.0:7779`, override with `HOST`/`PORT`). Env: `HOST` (default `0.0.0.0`), `PORT` (default 7779), `DATABASE_URL` (default `postgresql://gts:gts@localhost:5432/gts`), `LOG_LEVEL` (default `INFO`). Requires a running Postgres.
+- **Server logging** (`src/gen1online/logging_utils.py`, stdlib `logging` → stderr, visible via `docker compose logs -f gts-server`): INFO = player join/leave, challenges, deposits/trades/withdraws/claims, profile updates, trade receipts, purge notices. `sync_pos` ticks, `poll_battle_msgs` and `send_battle_msg` stay silent at INFO (10–20 Hz noise); they log at DEBUG (`LOG_LEVEL=DEBUG`). Unhandled handler exceptions log a traceback and return a JSON 500. `docker-compose.yml` passes `LOG_LEVEL: ${LOG_LEVEL:-INFO}` through.
 - Run the full stack: `docker compose up -d --build` (builds the uv Dockerfile, waits for a healthy Postgres, then starts the server; also 127.0.0.1:7779).
 - Migrate legacy data into Postgres: `uv run gen1online-migrate [path/to/gts_database.json]`.
 - Release: pushing a `v*` tag triggers `.github/workflows/release.yml`, which zips `main.lua manifest.json mod.card README.md` into `gen1online.zip` (players only; self-hosters build the server from the repo via `docker compose up -d --build`).

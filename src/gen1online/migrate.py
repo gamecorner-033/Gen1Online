@@ -12,6 +12,7 @@ as the server.
 WARNING: truncates all GTS tables before importing.
 """
 import json
+import logging
 import os
 import re
 import sys
@@ -21,10 +22,14 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from gen1online.config import DB_URI
+from gen1online.logging_utils import setup_logging
 from gen1online.storage import SCHEMA_SQL
+
+logger = logging.getLogger(__name__)
 
 
 def main(argv=None):
+    setup_logging()
     argv = list(sys.argv[1:]) if argv is None else list(argv)
     path = argv[0] if argv else os.path.join(os.getcwd(), "gts_database.json")
     with open(path, encoding="utf-8") as f:
@@ -81,9 +86,9 @@ def main(argv=None):
             (str(max_num),),
         )
 
-    print(f"Migration complete: imported {len(data.get('listings', {}))} listings, "
-          f"{len(data.get('history', []))} history entries, "
-          f"{len(data.get('profiles', {}))} profiles into {DB_URI}")
+    logger.info("Migration complete: imported %d listings, %d history entries, %d profiles into %s",
+                len(data.get("listings", {})), len(data.get("history", [])),
+                len(data.get("profiles", {})), DB_URI)
 
 
 if __name__ == "__main__":
