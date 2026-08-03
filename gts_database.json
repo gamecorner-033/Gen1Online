@@ -1,146 +1,318 @@
 {
-  "listings": {},
+  "listings": {
+    "GTS_1077": {
+      "id": "GTS_1077",
+      "trainerId": "45799",
+      "trainerName": "RED",
+      "offeredMon": {
+        "dvs": {
+          "attack": 15,
+          "defense": 8,
+          "special": 5,
+          "speed": 1,
+          "hp": 11
+        },
+        "statExp": {
+          "attack": 284,
+          "defense": 277,
+          "special": 338,
+          "speed": 357,
+          "hp": 289
+        },
+        "level": 27,
+        "moves": [
+          {
+            "ppUps": 0,
+            "pp": 30,
+            "id": "LICK"
+          },
+          {
+            "ppUps": 0,
+            "pp": 10,
+            "id": "CONFUSE_RAY"
+          },
+          {
+            "ppUps": 0,
+            "pp": 15,
+            "id": "NIGHT_SHADE"
+          },
+          {
+            "pp": 20,
+            "id": "HYPNOSIS"
+          }
+        ],
+        "species": "HAUNTER",
+        "ot": "RED",
+        "otId": 45799,
+        "hp": 68,
+        "exp": 16562
+      },
+      "wanted": [
+        "PIKACHU"
+      ],
+      "timestamp": 1785769770
+    },
+    "GTS_1078": {
+      "id": "GTS_1078",
+      "trainerId": "45799",
+      "trainerName": "RED",
+      "offeredMon": {
+        "dvs": {
+          "attack": 3,
+          "defense": 13,
+          "special": 14,
+          "speed": 10,
+          "hp": 12
+        },
+        "statExp": {
+          "attack": 728,
+          "defense": 961,
+          "special": 998,
+          "speed": 1126,
+          "hp": 3208
+        },
+        "level": 28,
+        "moves": [
+          {
+            "ppUps": 0,
+            "pp": 24,
+            "id": "KARATE_CHOP"
+          },
+          {
+            "pp": 20,
+            "id": "LOW_KICK"
+          },
+          {
+            "pp": 30,
+            "id": "LEER"
+          }
+        ],
+        "species": "MACHOKE",
+        "ot": "RED",
+        "otId": 45799,
+        "hp": 90,
+        "exp": 18374
+      },
+      "wanted": [
+        "PIKACHU"
+      ],
+      "timestamp": 1785775402
+    }
+  },
   "user_counts": {
     "63884": 0,
     "11531": 0,
-    "45799": 0,
+    "45799": 2,
     "43253": 0,
     "5306": 0,
     "38673": 0,
-    "9444": 0
+    "9444": 0,
+    "39106": 0,
+    "13330": 0,
+    "17823": 0,
+    "46228": 0,
+    "12607": 0
   },
   "history": [
     {
-      "text": "Luka TRADED PIKACHU TO Wisee FOR ENTEI",
-      "time": 1785721520
-    },
-    {
-      "text": "Wisee (ID 9444) DEPOSITED ENTEI LV30",
-      "time": 1785721511
-    },
-    {
-      "text": "Luka (ID 43253) DEPOSITED Volt LV10",
-      "time": 1785721452
-    },
-    {
-      "text": "Luka (ID 43253) DEPOSITED Volt LV10",
-      "time": 1785720727
-    },
-    {
-      "text": "JJ TRADED PIKACHU TO Luka FOR MEW",
-      "time": 1785718417
-    },
-    {
-      "text": "Luka (ID 43253) DEPOSITED MEW LV5",
-      "time": 1785713377
-    },
-    {
-      "text": "Luka TRADED PIKACHU TO Luka FOR MEW",
-      "time": 1785712125
-    },
-    {
-      "text": "Luka (ID 43253) DEPOSITED MEW LV5",
-      "time": 1785712000
-    },
-    {
-      "text": "Luka (ID 43253) DEPOSITED A LV4",
-      "time": 1785711972
-    },
-    {
-      "text": "Luka (ID 43253) DEPOSITED MEW LV5",
-      "time": 1785711501
-    },
-    {
-      "text": "AICL TRADED PIKACHU TO XiON FOR SPARKPLUG",
-      "time": 1785710152
-    },
-    {
-      "text": "XiON (ID 45799) DEPOSITED SPARKPLUG LV50",
-      "time": 1785708079
-    },
-    {
-      "text": "Pac-Man (ID 11531) DEPOSITED Cpap LV4",
-      "time": 1785706839
-    },
-    {
-      "text": "ASH (ID 38673) DEPOSITED ABRA LV9",
-      "time": 1785705811
-    },
-    {
-      "text": "RED TRADED PIKACHU TO AAAAAAA FOR TAUROS",
-      "time": 1785704653
-    },
-    {
-      "text": "Pac-Man TRADED PIKACHU TO Luka FOR Cpap",
-      "time": 1785704362
+      "text": "RED (ID 45799) DEPOSITED MACHOKE LV28",
+      "time": 1785775402
     },
     {
       "text": "RED TRADED PIKACHU TO RED FOR KADABRA",
-      "time": 1785703720
+      "time": 1785771948
     },
     {
-      "text": "RED (ID 5306) DEPOSITED KADABRA LV17",
-      "time": 1785703697
+      "text": "RED (ID 45799) DEPOSITED HAUNTER LV27",
+      "time": 1785769770
     },
     {
-      "text": "RED (ID 5306) DEPOSITED KADABRA LV17",
-      "time": 1785703644
+      "text": "RED (ID 45799) DEPOSITED KADABRA LV16",
+      "time": 1785769760
     },
     {
-      "text": "Luka (ID 43253) DEPOSITED Cpap LV4",
-      "time": 1785703470
+      "text": "RED TRADED PIKACHU TO ASH FOR CHARIZARD",
+      "time": 1785769670
     },
     {
-      "text": "AAAAAAA (ID 45799) DEPOSITED TAUROS LV100",
-      "time": 1785703028
+      "text": "AAAAAAA LINK TRADED PINSIR WITH Chris",
+      "time": 1785763010
     },
     {
-      "text": "AAAAAAA TRADED PIKACHU TO Psilocy FOR TAUROS",
-      "time": 1785702991
+      "text": "Chris LINK TRADED Deeno WITH AAAAAAA",
+      "time": 1785763008
     },
     {
-      "text": "AAAAAAA (ID 45799) DEPOSITED GENGAR LV57",
-      "time": 1785702905
+      "text": "AAAAAAA LINK TRADED PINSIR WITH Chris",
+      "time": 1785763001
     },
     {
-      "text": "AAAAAAA (ID 45799) DEPOSITED GENGAR LV57",
-      "time": 1785702856
+      "text": "ASH (ID 12607) DEPOSITED CHARIZARD LV100",
+      "time": 1785762616
     },
     {
-      "text": "Psilocy (ID 11531) DEPOSITED TAUROS LV100",
-      "time": 1785702801
+      "text": "ASH (ID 46228) DEPOSITED BUTTERFREE LV11",
+      "time": 1785761203
     },
     {
-      "text": "Psilocy (ID 11531) DEPOSITED VILEPLUME LV100",
-      "time": 1785702747
+      "text": "JOHN TRADED VENUSAUR TO Pac-Man FOR PIKACHU",
+      "time": 1785754876
     },
     {
-      "text": "Psilocy TRADED PIKACHU TO Psilocy FOR VILEPLUME",
-      "time": 1785702738
+      "text": "Pac-Man (ID 11531) DEPOSITED PIKACHU LV5",
+      "time": 1785744951
     },
     {
-      "text": "Psilocy (ID 11531) DEPOSITED VILEPLUME LV100",
-      "time": 1785702705
+      "text": "Pac-Man (ID 11531) DEPOSITED ABRA LV5",
+      "time": 1785744927
     },
     {
-      "text": "AAAAAAA TRADED PIKACHU TO Pac-Man FOR Bird",
-      "time": 1785698606
+      "text": "Pac-Man (ID 11531) DEPOSITED ABRA LV5",
+      "time": 1785741552
     },
     {
-      "text": "Pac-Man (ID 11531) DEPOSITED Bird LV4",
-      "time": 1785696961
+      "text": "Pac-Man LINK TRADED PIKACHU WITH Jason",
+      "time": 1785740829
     },
     {
-      "text": "Psilocy (ID 11531) DEPOSITED VILEPLUME LV100",
-      "time": 1785689878
+      "text": "RED (ID 45799) DEPOSITED DRAGONITE LV7",
+      "time": 1785740622
     },
     {
-      "text": "AAAAAAA TRADED PIKACHU TO BK FOR CHARMANDER",
-      "time": 1785683510
+      "text": "RED TRADED BULBASAUR TO Pac-Man FOR ABRA",
+      "time": 1785740387
     },
     {
-      "text": "BK (ID 63884) DEPOSITED CHARMANDER LV50",
-      "time": 1785682536
+      "text": "Pac-Man (ID 11531) DEPOSITED ABRA LV5",
+      "time": 1785739610
+    },
+    {
+      "text": "Pac-Man (ID 11531) DEPOSITED Jihgfedcba LV5",
+      "time": 1785739192
+    },
+    {
+      "text": "Pac-Man (ID 11531) DEPOSITED ZUBAT LV8",
+      "time": 1785739104
+    },
+    {
+      "text": "Pac-Man (ID 11531) DEPOSITED ABRA LV5",
+      "time": 1785737655
+    },
+    {
+      "text": "ABCDEFG (ID 11531) DEPOSITED Jihgfedcba LV5",
+      "time": 1785736703
+    },
+    {
+      "text": "ABCDEFG (ID 11531) DEPOSITED CHARIZARD LV100",
+      "time": 1785736680
+    },
+    {
+      "text": "ABCDEFG (ID 11531) DEPOSITED MEWTWO LV100",
+      "time": 1785736667
+    },
+    {
+      "text": "ABCDEFG TRADED BULBASAUR TO Pac-Man FOR ABRA",
+      "time": 1785736650
+    },
+    {
+      "text": "Pac-Man (ID 11531) DEPOSITED ABRA LV5",
+      "time": 1785736638
+    },
+    {
+      "text": "Pac-Man TRADED PIKACHU TO MIKI FOR ZUBAT",
+      "time": 1785736488
+    },
+    {
+      "text": "MIKI (ID 11531) DEPOSITED ZUBAT LV8",
+      "time": 1785736033
+    },
+    {
+      "text": "Pac-Man (ID 11531) DEPOSITED ABRA LV5",
+      "time": 1785735476
+    },
+    {
+      "text": "Pac-Man (ID 11531) DEPOSITED ABRA LV5",
+      "time": 1785735470
+    },
+    {
+      "text": "Pac-Man (ID 11531) DEPOSITED ABRA LV5",
+      "time": 1785735464
+    },
+    {
+      "text": "Pac-Man (ID 11531) DEPOSITED ABRA LV5",
+      "time": 1785735211
+    },
+    {
+      "text": "ABCDEFG TRADED BULBASAUR TO ABCDEFG FOR PIDGEY",
+      "time": 1785735077
+    },
+    {
+      "text": "ABCDEFG (ID 11531) DEPOSITED PIDGEY LV5",
+      "time": 1785735073
+    },
+    {
+      "text": "ABCDEFG TRADED BULBASAUR TO Pac-Man FOR PIDGEY",
+      "time": 1785735019
+    },
+    {
+      "text": "ABCDEFG TRADED PIKACHU TO Luka FOR Jihgfedcba",
+      "time": 1785735009
+    },
+    {
+      "text": "Luka (ID 13330) DEPOSITED Jihgfedcba LV5",
+      "time": 1785734985
+    },
+    {
+      "text": "Pac-Man (ID 11531) DEPOSITED PIDGEY LV5",
+      "time": 1785734843
+    },
+    {
+      "text": "Pac-Man (ID 11531) DEPOSITED ABRA LV5",
+      "time": 1785734826
+    },
+    {
+      "text": "Luka (ID 13330) DEPOSITED PIKACHU LV5",
+      "time": 1785734668
+    },
+    {
+      "text": "Pac-Man (ID 11531) DEPOSITED ABRA LV5",
+      "time": 1785734608
+    },
+    {
+      "text": "Pac-Man (ID 11531) DEPOSITED ABRA LV5",
+      "time": 1785734531
+    },
+    {
+      "text": "Luka (ID 13330) DEPOSITED Jihgfedcba LV5",
+      "time": 1785734499
+    },
+    {
+      "text": "ABCDEFG TRADED ABRA TO Pac-Man FOR CHARIZARD",
+      "time": 1785734429
+    },
+    {
+      "text": "Pac-Man (ID 11531) DEPOSITED CHARIZARD LV100",
+      "time": 1785734367
+    },
+    {
+      "text": "ABCDEFG TRADED PIDGEY TO Pac-Man FOR MEWTWO",
+      "time": 1785734305
+    },
+    {
+      "text": "Pac-Man (ID 11531) DEPOSITED MEWTWO LV100",
+      "time": 1785733831
+    },
+    {
+      "text": "Luka TRADED Volt TO ASH FOR EKANS",
+      "time": 1785733704
+    },
+    {
+      "text": "ASH (ID 38673) DEPOSITED EKANS LV15",
+      "time": 1785733393
+    },
+    {
+      "text": "Luka TRADED MEWTWO TO Pac-Man FOR ABCDEFGHIJ",
+      "time": 1785733269
     }
   ],
   "claim_boxes": {
@@ -195,53 +367,144 @@
     "11531": [],
     "5306": [],
     "43253": [],
-    "45799": [],
-    "9444": []
+    "45799": [
+      {
+        "mon": {
+          "hp": 3,
+          "otId": 37263,
+          "exp": 2494,
+          "ot": "RED",
+          "moves": [
+            {
+              "id": "THUNDERSHOCK",
+              "pp": 29
+            },
+            {
+              "id": "DREAM_EATER",
+              "pp": 15
+            },
+            {
+              "id": "SLEEP_POWDER",
+              "pp": 15
+            },
+            {
+              "id": "DRAGON_RAGE",
+              "pp": 5
+            }
+          ],
+          "species": "PIKACHU",
+          "dvs": {
+            "hp": 15,
+            "attack": 15,
+            "defense": 15,
+            "special": 15,
+            "speed": 15
+          },
+          "statExp": {
+            "hp": 447,
+            "attack": 524,
+            "defense": 550,
+            "special": 459,
+            "speed": 570
+          },
+          "level": 13
+        },
+        "fromName": "RED",
+        "fromId": "37263",
+        "originalOffered": "KADABRA",
+        "timestamp": 1785771948
+      }
+    ],
+    "9444": [],
+    "39106": [],
+    "13330": [],
+    "17823": [],
+    "38673": [],
+    "12607": [
+      {
+        "mon": {
+          "dvs": {
+            "attack": 15,
+            "defense": 15,
+            "special": 15,
+            "speed": 15,
+            "hp": 15
+          },
+          "statExp": {
+            "attack": 0,
+            "defense": 0,
+            "special": 0,
+            "speed": 0,
+            "hp": 0
+          },
+          "level": 5,
+          "moves": [
+            {
+              "pp": 30,
+              "id": "THUNDERSHOCK"
+            },
+            {
+              "pp": 40,
+              "id": "GROWL"
+            }
+          ],
+          "species": "PIKACHU",
+          "ot": "RED",
+          "otId": 45799,
+          "hp": 20,
+          "exp": 125
+        },
+        "fromName": "RED",
+        "fromId": "45799",
+        "originalOffered": "CHARIZARD",
+        "timestamp": 1785769670
+      }
+    ]
   },
   "profiles": {
     "63884": {
       "trainerId": "63884",
-      "name": "BK",
-      "title": "ACE TRAINER",
+      "name": "RED",
+      "title": "COOLTRAINER",
       "badges": 0,
-      "pokedexCount": 4,
+      "pokedexCount": 51,
       "gtsTrades": 0,
       "pvpWins": 2,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1785722175
+      "timestamp": 1785734971
     },
     "45799": {
       "trainerId": "45799",
-      "name": "JJ",
+      "name": "RED",
       "title": "ACE TRAINER",
       "badges": 0,
-      "pokedexCount": 47,
+      "pokedexCount": 113,
       "gtsTrades": 0,
-      "pvpWins": 0,
+      "pvpWins": 1,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1785722263
+      "timestamp": 1785775316
     },
     "38673": {
       "trainerId": "38673",
-      "name": "Akuma",
-      "title": "ACE TRAINER",
-      "badges": 0,
-      "pokedexCount": 11,
-      "gtsTrades": 0,
-      "pvpWins": 0,
-      "favoriteMon": "CHARIZARD",
-      "timestamp": 1785711227
-    },
-    "11531": {
-      "trainerId": "11531",
-      "name": "Pac-Man",
+      "name": "ROT",
       "title": "ACE TRAINER",
       "badges": 0,
       "pokedexCount": 2,
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1785722215
+      "timestamp": 1785773799
+    },
+    "11531": {
+      "trainerId": "11531",
+      "name": "MIKI",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 9,
+      "gtsTrades": 0,
+      "pvpWins": 2,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1785763743
     },
     "43253": {
       "trainerId": "43253",
@@ -263,29 +526,29 @@
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1785721421
+      "timestamp": 1785762614
     },
     "5306": {
       "trainerId": "5306",
-      "name": "RED",
+      "name": "Jason",
       "title": "ACE TRAINER",
       "badges": 0,
-      "pokedexCount": 27,
+      "pokedexCount": 0,
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1785703630
+      "timestamp": 1785741253
     },
     "48217": {
       "trainerId": "48217",
       "name": "YELLOW",
       "title": "ACE TRAINER",
       "badges": 0,
-      "pokedexCount": 3,
+      "pokedexCount": 4,
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1785706198
+      "timestamp": 1785775394
     },
     "22238": {
       "trainerId": "22238",
@@ -314,78 +577,221 @@
       "name": "BLUE",
       "title": "ACE TRAINER",
       "badges": 0,
-      "pokedexCount": 16,
+      "pokedexCount": 38,
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1785708521
+      "timestamp": 1785727255
     },
     "39106": {
       "trainerId": "39106",
-      "name": "Yan",
-      "title": "ACE TRAINER",
+      "name": "EDEN",
+      "title": "LASS",
       "badges": 0,
-      "pokedexCount": 26,
+      "pokedexCount": 0,
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1785719793
+      "timestamp": 1785762732
     },
     "49363": {
       "trainerId": "49363",
-      "name": "BRYCE",
-      "title": "COOLTRAINER",
+      "name": "Duda",
+      "title": "ACE TRAINER",
       "badges": 0,
-      "pokedexCount": 3,
+      "pokedexCount": 6,
       "gtsTrades": 0,
       "pvpWins": 0,
-      "favoriteMon": "CHARMA",
-      "timestamp": 1785721709
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1785765249
     },
     "20772": {
       "trainerId": "20772",
       "name": "Zero",
-      "title": "SUPER NERD",
+      "title": "ACE TRAINER",
       "badges": 0,
-      "pokedexCount": 18,
+      "pokedexCount": 30,
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1785714051
+      "timestamp": 1785722471
     },
     "9444": {
       "trainerId": "9444",
-      "name": "Wisee",
+      "name": "Dev",
       "title": "ACE TRAINER",
       "badges": 0,
-      "pokedexCount": 1,
+      "pokedexCount": 33,
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1785722227
+      "timestamp": 1785763536
     },
     "54367": {
       "trainerId": "54367",
       "name": "ALEX",
       "title": "ACE TRAINER",
       "badges": 0,
-      "pokedexCount": 3,
+      "pokedexCount": 4,
       "gtsTrades": 0,
-      "pvpWins": 0,
+      "pvpWins": 1,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1785722157
+      "timestamp": 1785724212
     },
     "13330": {
       "trainerId": "13330",
       "name": "Luka",
       "title": "ACE TRAINER",
       "badges": 0,
+      "pokedexCount": 12,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1785775054
+    },
+    "54389": {
+      "trainerId": "54389",
+      "name": "ALEX",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 2,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1785724219
+    },
+    "1624": {
+      "trainerId": "1624",
+      "name": "TACTICA",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 14,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1785729691
+    },
+    "46228": {
+      "trainerId": "46228",
+      "name": "ASH",
+      "title": "POK\u00e9MON CHAMPION",
+      "badges": 0,
+      "pokedexCount": 8,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "PIKACHU",
+      "timestamp": 1785761346
+    },
+    "17823": {
+      "trainerId": "17823",
+      "name": "ASH",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 15,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1785731148
+    },
+    "8754": {
+      "trainerId": "8754",
+      "name": "Reyvy",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 13,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1785730745
+    },
+    "3251": {
+      "trainerId": "3251",
+      "name": "RED",
+      "title": "SUPER NERD",
+      "badges": 0,
+      "pokedexCount": 0,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1785732259
+    },
+    "48792": {
+      "trainerId": "48792",
+      "name": "COOKIE",
+      "title": "SUPER NERD",
+      "badges": 0,
+      "pokedexCount": 0,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1785732393
+    },
+    "6764": {
+      "trainerId": "6764",
+      "name": "Mattia<PK>",
+      "title": "POK\u00e9MON CHAMPION",
+      "badges": 0,
+      "pokedexCount": 151,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "MEWTWO",
+      "timestamp": 1785735659
+    },
+    "27963": {
+      "trainerId": "27963",
+      "name": "YONI",
+      "title": "ACE TRAINER",
+      "badges": 0,
       "pokedexCount": 1,
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1785722240
+      "timestamp": 1785760514
+    },
+    "12607": {
+      "trainerId": "12607",
+      "name": "ASH",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 151,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1785762663
+    },
+    "29605": {
+      "trainerId": "29605",
+      "name": "SETHREZ",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 0,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1785764596
+    },
+    "32722": {
+      "trainerId": "32722",
+      "name": "Lollo",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 2,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1785765905
+    },
+    "37263": {
+      "trainerId": "37263",
+      "name": "RED",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 4,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1785775108
     }
   },
-  "next_id": 1023
+  "next_id": 1079
 }
