@@ -17,7 +17,7 @@ jobs:
       - name: Create Release Zip
         run: |
           mkdir -p build/gen1online
-          cp -r main.lua manifest.json mod.card README.md Dockerfile gts_server.py build/gen1online/
+          cp main.lua manifest.json mod.card README.md build/gen1online/
           cd build
           zip -r ../gen1online.zip gen1online
 
