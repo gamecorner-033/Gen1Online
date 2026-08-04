@@ -675,8 +675,8 @@ end
     game.stack:push(Menu.new(game, partyItems, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
   end
 
-  -- CLEAN ENTITY GC HELPER
-  local function removeNetPlayer(ow, tid)
+  -- Remove ONLY the follower NPC for a remote player (keeps the player avatar)
+  local function removeNetFollower(ow, tid)
     if not ow then return end
     tid = tostring(tid)
 
@@ -698,6 +698,14 @@ end
       end
       netFollowers[tid] = nil
     end
+  end
+
+  -- CLEAN ENTITY GC HELPER
+  local function removeNetPlayer(ow, tid)
+    if not ow then return end
+    tid = tostring(tid)
+
+    removeNetFollower(ow, tid)
 
     if netNpcs[tid] then
       local pNpc = netNpcs[tid]
@@ -950,8 +958,20 @@ end
                     end
                     fNpc.facing = facing
                 else
-                    removeNetPlayer(ow, tid)
-                end
+                -- CRITICAL FIX: the vanilla ROM ships NO SPRITE_WILD_* overworld
+                  -- sprites (data/generated/sprites.lua only has trainer sprites
+            -- like SPRITE_RED/SPRITE_BLUE), so this lookup ALWAYS fails for
+            -- any real follower species. The old code called
+            -- removeNetPlayer() here, which deleted the PLAYER AVATAR that
+            -- had just been created a few lines above in this same function
+            -- call -- so every remote player with a party Pokemon (i.e.
+            -- basically everyone in real play) was spawned and instantly
+            -- destroyed before a single frame ever rendered them, making
+            -- them invisible to whoever received their data. Only remove
+            -- the (never-successfully-created) follower here; never the
+            -- avatar.
+            removeNetFollower(ow, tid)
+          end
             end
         else
             -- Remote player is on a different map – remove their NPCs if they exist
