@@ -1,0 +1,14 @@
+{
+  "id": "gen1online",
+  "name": "Gen1Online",
+  "version": "0.2.6.7",
+  "entry": "main.lua",
+  "author": "Gamecorner33 (with AI Assistant Antigravity)",
+  "description": "Multiplayer online 16-player MMO overworld exploration, persistent 24/7 GTS server, Trainer Profile Cards, follower Pokémon sync, 3D Voxel support, and real-time PVP battles.",
+  "category": "CONTENT",
+  "permissions": [
+    "engine_internals",
+    "network"
+  ],
+  "github": "gamecorner-033/Gen1Online"
+}
