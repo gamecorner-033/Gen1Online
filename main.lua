@@ -3017,23 +3017,35 @@ return function(mod)
   mod.content.screens:register(ids.pokemon, { new = UI.pokemonMenu })
   mod.content.screens:register(ids.item, { new = UI.itemMenu })
 
+  local function getDerivedPath(subpath)
+    local p1 = "save/mod-derived/" .. tostring(mod.id or "gen1online-gamecorner") .. "/" .. subpath
+    local p2 = "save/mod-derived/blackjack_corner/" .. subpath
+    local p3 = "save/mod-derived/gen1online-gamecorner/" .. subpath
+    if love and love.filesystem and love.filesystem.getInfo then
+      if love.filesystem.getInfo(p1) then return p1 end
+      if love.filesystem.getInfo(p2) then return p2 end
+      if love.filesystem.getInfo(p3) then return p3 end
+    end
+    return p1
+  end
+
   for _, tableDef in ipairs({
     { id = "BLACKJACK", file = "blackjack" },
     { id = "HOLDEM", file = "holdem" },
   }) do
     for piece = 1, 8 do
+      local sub = string.format("world/%s_table_%02d.png", tableDef.file, piece)
       mod.content.sprites:register(("SPRITE_%s_TABLE_%02d"):format(tableDef.id, piece), {
-        image = ("save/mod-derived/blackjack_corner/world/%s_table_%02d.png")
-          :format(tableDef.file, piece), frames = 1, trueColor = true,
+        image = getDerivedPath(sub), frames = 1, trueColor = true,
       })
     end
   end
   for _, machine in ipairs({ "crash", "flappy", "case" }) do
     for piece = 1, 2 do
+      local sub = string.format("world/%s_machine_%02d.png", machine, piece)
       mod.content.sprites:register(("SPRITE_ARCADE_%s_%02d")
         :format(machine:upper(), piece), {
-          image = ("save/mod-derived/blackjack_corner/world/%s_machine_%02d.png")
-            :format(machine, piece), frames = 1, trueColor = true,
+          image = getDerivedPath(sub), frames = 1, trueColor = true,
         })
     end
   end

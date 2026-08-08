@@ -6,6 +6,7 @@
   "author": "Gamecorner33 (with AI Assistant Antigravity)",
   "description": "Integrated Gen 1 Online MMO, 24/7 GTS Trading, PVP Battles, Casino Lounge, and Live Multiplayer Online Texas Hold'em.",
   "category": "CONTENT",
+  "assets_transforms": "transforms.lua",
   "permissions": [
     "engine_internals",
     "network"
