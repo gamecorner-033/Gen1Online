@@ -166,7 +166,8 @@ return function(mod)
         local ok, err = pcall(fn, {
           url = url, method = "POST",
           headers = { ["Content-Type"]="application/json",
-                      ["Content-Length"]=tostring(#body) },
+                      ["Content-Length"]=tostring(#body),
+                      ["X-Mod-Version"]="0.3.4" },
           source = ltn12.source.string(body),
           sink   = ltn12.sink.table(resp_body),
           timeout = 3.5
@@ -256,12 +257,47 @@ return function(mod)
     return false, nil, nil, nil, nil
   end
 
+  local MOD_VERSION = "0.3.4"
+
+  -- Client Game Version (Red/Blue/Yellow) & Recomp Engine Version Detector
+  local function getClientVersionInfo()
+    local gameName = "Pokemon Red"
+    local okGv, GvMod = pcall(require, "src.core.GameVersion")
+    if okGv and GvMod and GvMod.get then
+      local vid = GvMod.get()
+      gameName = (GvMod.VERSIONS and GvMod.VERSIONS[vid] and GvMod.VERSIONS[vid].displayName) or (tostring(vid):sub(1,1):upper() .. tostring(vid):sub(2))
+    end
+
+    local recompVer = "0.0.0-dev"
+    local okVer, VerMod = pcall(require, "src.core.Version")
+    if okVer and VerMod and VerMod.engine then
+      recompVer = "v" .. tostring(VerMod.engine)
+    end
+    return gameName, recompVer
+  end
+
+
+  -- Profanity Filter Module Loader
+  local Profanity = nil
+  local okProf, profMod = pcall(require, "mods.gen1online-gamecorner.other.profanity")
+  if okProf and profMod then
+    Profanity = profMod
+  else
+    local okProf2, profMod2 = pcall(require, "other.profanity")
+    if okProf2 and profMod2 then Profanity = profMod2 end
+  end
+
   local function gtsApiGet(path, timeout)
     if not ltn12 then return nil end
     local response_body = {}
+    local separator = path:find("?") and "&" or "?"
+    local fullPath = path .. separator .. "version=" .. MOD_VERSION .. "&modVersion=" .. MOD_VERSION
     local ok, res, code, headers, status = makeHttpRequest({
-      url = GTS_SERVER_URL .. path,
+      url = GTS_SERVER_URL .. fullPath,
       method = "GET",
+      headers = {
+        ["X-Mod-Version"] = MOD_VERSION
+      },
       sink = ltn12.sink.table(response_body),
       timeout = timeout or 0.5
     })
@@ -273,12 +309,14 @@ return function(mod)
     return nil
   end
 
-  local MOD_VERSION = "0.3.3"
-
   local function gtsApiPost(payload, timeout)
     if not ltn12 then return nil end
     payload = payload or {}
-    payload.modVersion = payload.modVersion or MOD_VERSION
+        local gName, rVer = getClientVersionInfo()
+    payload.modVersion = MOD_VERSION
+    payload.version = MOD_VERSION
+    payload.gameVersion = gName
+    payload.recompVersion = rVer
     local jsonStr = Json.encode(payload)
     local response_body = {}
     local ok, res, code, headers, status = makeHttpRequest({
@@ -286,7 +324,8 @@ return function(mod)
       method = "POST",
       headers = {
         ["Content-Type"] = "application/json",
-        ["Content-Length"] = tostring(#jsonStr)
+        ["Content-Length"] = tostring(#jsonStr),
+        ["X-Mod-Version"] = MOD_VERSION
       },
       source = ltn12.source.string(jsonStr),
       sink = ltn12.sink.table(response_body),
@@ -381,6 +420,8 @@ return function(mod)
         url = GTS_SERVER_URL .. "/gts",
         body = Json.encode({
           action = "send_battle_msg",
+          modVersion = MOD_VERSION,
+          version = MOD_VERSION,
           roomId = self.roomId,
           targetId = self.targetId,
           msg = msg
@@ -414,6 +455,8 @@ return function(mod)
         url = GTS_SERVER_URL .. "/gts",
         body = Json.encode({
           action = "poll_battle_msgs",
+          modVersion = MOD_VERSION,
+          version = MOD_VERSION,
           roomId = self.roomId,
           myId = self.myId
         })
@@ -1784,6 +1827,9 @@ return function(mod)
             if not wantedList or #wantedList == 0 then return end
 
             local depositMon = table.remove(game.save.party, chosenSlot)
+            if depositMon and depositMon.nickname and Profanity and Profanity.censor then
+              depositMon.nickname = Profanity.censor(depositMon.nickname)
+            end
             local packedMon = Protocol.packMon(depositMon)
 
             local res = gtsApiPost({
@@ -2096,6 +2142,8 @@ return function(mod)
                   url = GTS_SERVER_URL .. "/gts",
                   body = Json.encode({
                     action = "sync_pos",
+                    modVersion = MOD_VERSION,
+                    version = MOD_VERSION,
                     trainerId = tid,
                     name = chosenName,
                     spriteId = localSelectedSprite,
@@ -2138,9 +2186,17 @@ return function(mod)
           enteredName = (enteredName or ""):gsub("^%s+", ""):gsub("%s+$", "")
           if #enteredName == 0 then enteredName = "RED" end
 
+          if Profanity and Profanity.contains and Profanity.contains(enteredName) then
+            game.stack:push(TextBox.new(game, wrapText("NAME CONTAINS INAPPROPRIATE LANGUAGE!\nPLEASE CHOOSE ANOTHER NAME."), function()
+              openFreshOnlinePlayerMenu(game)
+            end))
+            return
+          end
+
           local check = gtsApiGet("/player/check_name?name=" .. enteredName, 1.5)
           if check and check.taken then
-            game.stack:push(TextBox.new(game, wrapText(string.format("NAME '%s' IS TAKEN ON SERVER! CHOOSE ANOTHER.", enteredName)), function()
+            local reasonText = (check.reason == "PROFANITY_DETECTED" and "INAPPROPRIATE LANGUAGE DETECTED!") or string.format("NAME '%s' IS TAKEN ON SERVER!", enteredName)
+            game.stack:push(TextBox.new(game, wrapText(reasonText .. "\nPLEASE CHOOSE ANOTHER NAME."), function()
               openFreshOnlinePlayerMenu(game)
             end))
           else
@@ -2192,15 +2248,16 @@ return function(mod)
             table.insert(presetItems, {
               label = msgText,
               onSelect = function()
+                local cleanText = (Profanity and Profanity.censor) and Profanity.censor(msgText) or msgText
                 local res = gtsApiPost({
                   action = "send_chat",
                   trainerId = trainerId,
                   name = trainerName,
-                  text = msgText,
+                  text = cleanText,
                   scope = "global"
                 }, 1.5)
                 if res and res.success then
-                  game.stack:push(TextBox.new(game, wrapText(string.format("CHAT BROADCAST:\n%s", msgText))))
+                  game.stack:push(TextBox.new(game, wrapText(string.format("CHAT BROADCAST:\n%s", cleanText))))
                 else
                   game.stack:push(TextBox.new(game, wrapText("COULD NOT SEND CHAT TO SERVER!")))
                 end
@@ -2362,6 +2419,10 @@ return function(mod)
           url = GTS_SERVER_URL .. "/gts",
           body = Json.encode({
             action = "sync_pos",
+            modVersion = MOD_VERSION,
+            version = MOD_VERSION,
+            gameVersion = select(1, getClientVersionInfo()),
+            recompVersion = select(2, getClientVersionInfo()),
             trainerId = tid,
             name = acc.name or currentName,
             spriteId = localSelectedSprite,
@@ -2391,7 +2452,7 @@ return function(mod)
     end
   end
 
-  -- Hook Start Menu
+    -- Hook Start Menu
   mod.hooks:wrap("ui.start_menu.items", function(nextFn, game, items)
     local list = nextFn and nextFn(game, items) or items
     if not list or type(list) ~= "table" then list = items end
@@ -2412,6 +2473,18 @@ return function(mod)
       end,
     }
 
+        local versionItem = {
+      label = string.format("MOD: V%s", MOD_VERSION),
+      onSelect = function()
+        local srvInfo = gtsApiGet("/server/info", 1.5)
+        local srvVer = (srvInfo and (srvInfo.modVersion or srvInfo.version)) or "OFFLINE"
+        local statusStr = (srvVer == MOD_VERSION) and "SYNCED (ONLINE)" or (srvVer == "OFFLINE" and "SERVER OFFLINE" or "UPDATE NEEDED")
+        local gName, rVer = getClientVersionInfo()
+        local msg = string.format("GEN 1 ONLINE\nMOD: V%s\nGAME: %s\nRECOMP: %s\nSERVER: V%s (%s)", MOD_VERSION, gName, rVer, srvVer, statusStr)
+        game.stack:push(TextBox.new(game, wrapText(msg)))
+      end,
+    }
+
     local newItem = {
       label = menuLabel,
       onSelect = function()
@@ -2429,8 +2502,10 @@ return function(mod)
         if isConnected then
           table.insert(list, i, expItem)
           table.insert(list, i + 1, newItem)
+          table.insert(list, i + 2, versionItem)
         else
           table.insert(list, i, newItem)
+          table.insert(list, i + 1, versionItem)
         end
         inserted = true
         break
@@ -2439,6 +2514,7 @@ return function(mod)
     if not inserted then
       if isConnected then table.insert(list, expItem) end
       table.insert(list, newItem)
+      table.insert(list, versionItem)
     end
     return list
   end)
@@ -2709,6 +2785,10 @@ return function(mod)
 
         local payload = {
           action = "sync_pos",
+          modVersion = MOD_VERSION,
+          version = MOD_VERSION,
+          gameVersion = select(1, getClientVersionInfo()),
+          recompVersion = select(2, getClientVersionInfo()),
           trainerId = trainerId,
           sessionId = clientSessionId,
           name = trainerName,

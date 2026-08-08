@@ -23,12 +23,13 @@ import os
 import time
 import math
 import secrets
+import re
 
 PORT = int(os.environ.get("PORT", 7779))
 DB_FILE = os.environ.get("GTS_DB_PATH", os.path.join(os.path.dirname(__file__), "gts_database.json"))
 BACKUP_DB_FILE = os.environ.get("GTS_BACKUP_PATH", os.path.join(os.path.dirname(__file__), "players_backup.json"))
 
-MOD_VERSION = "0.3.3"
+MOD_VERSION = "0.3.4"
 
 LISTING_TTL_SECONDS = 30 * 86400
 CLAIM_TTL_SECONDS = 60 * 86400
@@ -213,6 +214,100 @@ def audit_account_integrity(account):
         flags.append(f"EXCESSIVE_TOTAL_XP_{xp}")
 
     return flags
+
+
+# ---------------------------------------------------------------------------
+# Comprehensive Profanity & Slur Filter Engine
+# ---------------------------------------------------------------------------
+BAD_WORDS = [
+    "fuck", "fucker", "fucking", "fucked", "fuckhead", "motherfucker", "fuk", "fck", "fak", "fuc",
+    "shit", "shitting", "bullshit", "shithead", "shitty", "shyt", "shtt",
+    "bitch", "bitches", "bitching", "bitchass", "btch", "b1tch",
+    "asshole", "assholes", "dumbass", "jackass", "fatass", "badass", "ashole",
+    "cunt", "cunts",
+    "dick", "dicks", "dickhead", "cock", "cocks", "cocksucker",
+    "pussy", "pussies", "pusy",
+    "bastard", "bastards",
+    "slut", "sluts", "slutty",
+    "whore", "whores", "whor",
+    "nigger", "nigga", "niggaz", "niggers", "niggas", "n1gga", "n1gger",
+    "faggot", "fag", "faggots", "fags", "fgt",
+    "retard", "retarded", "tard",
+    "chink", "kike", "spic", "gook", "wetback", "tranny",
+    "pedophile", "pedo", "rapist", "rape",
+    "penis", "vagina", "dildo", "blowjob", "handjob", "cum", "cumshot",
+    "porn", "porno", "hentai", "nude", "nudes", "boobs", "tits", "titties",
+    "twat", "wanker", "prick"
+]
+
+EXACT_BAD_WORDS = [
+    "ass", "asses", "damn", "dammit", "hell", "sex", "tit", "kys"
+]
+
+LEET_MAP = {
+    '@': 'a', '4': 'a',
+    '8': 'b',
+    '(': 'c', '<': 'c', '[': 'c',
+    '3': 'e', '€': 'e',
+    '6': 'g', '9': 'g',
+    '#': 'h',
+    '1': 'i', '!': 'i', '|': 'i',
+    '0': 'o',
+    '5': 's', '$': 's', 'z': 's',
+    '7': 't', '+': 't',
+    'v': 'u',
+}
+
+def normalize_text(text):
+    if not text:
+        return ""
+    t = str(text).lower()
+    chars = []
+    for ch in t:
+        chars.append(LEET_MAP.get(ch, ch))
+    normalized = "".join(chars)
+    collapsed = re.sub(r'(.)\1{2,}', r'\1', normalized)
+    return collapsed
+
+def get_clean_alpha(text):
+    norm = normalize_text(text)
+    return re.sub(r'[^a-z0-9]', '', norm)
+
+def contains_profanity(text):
+    if not text:
+        return False
+    norm = normalize_text(text)
+    alpha = get_clean_alpha(text)
+    for w in BAD_WORDS:
+        if w in alpha:
+            return True
+    tokens = re.findall(r'[a-z0-9]+', norm)
+    for token in tokens:
+        if token in EXACT_BAD_WORDS or token in BAD_WORDS:
+            return True
+    for w in EXACT_BAD_WORDS:
+        pattern = r'\b' + re.escape(w) + r'\b'
+        if re.search(pattern, norm):
+            return True
+    return False
+
+def censor_profanity(text):
+    if not text:
+        return ""
+    words = re.findall(r'\S+|\s+', str(text))
+    censored_words = []
+    for word in words:
+        if word.isspace():
+            censored_words.append(word)
+            continue
+        if contains_profanity(word):
+            censored_words.append("*" * len(word))
+        else:
+            censored_words.append(word)
+    res = "".join(censored_words)
+    if contains_profanity(text) and res == str(text):
+        return "*" * max(3, min(8, len(text)))
+    return res
 
 class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
     daemon_threads = True
@@ -710,6 +805,24 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        # Strict Mod Version Gate for GET requests (except public server discovery)
+        path_only = self.path.split("?")[0]
+        if not path_only.startswith("/server/info") and path_only != "/":
+            client_ver = self.headers.get("X-Mod-Version", "").strip()
+            if not client_ver and "?" in self.path:
+                for p in self.path.split("?")[1].split("&"):
+                    if p.startswith("version=") or p.startswith("modVersion="):
+                        client_ver = p.split("=")[1].strip()
+            if not client_ver or client_ver != MOD_VERSION:
+                self._send_json({
+                    "success": False,
+                    "error": "VERSION_MISMATCH",
+                    "serverVersion": MOD_VERSION,
+                    "clientVersion": client_ver or "LEGACY_OUTDATED",
+                    "message": f"VERSION MISMATCH! SERVER REQUIRES V{MOD_VERSION}, PLEASE UPDATE YOUR MOD!"
+                }, status=426)
+                return
+
         client_ip = self.get_real_ip()
         if not check_rate_limit(client_ip):
             self._send_json({"error": "RATE LIMIT EXCEEDED"}, status=429)
@@ -717,7 +830,7 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
 
         self_clean_db()
 
-        if self.path == "/gts/browse" or self.path == "/gts" or self.path == "/":
+        if path_only == "/gts/browse" or path_only == "/gts" or path_only == "/":
             self._send_json({
                 "success": True,
                 "status": "ONLINE",
@@ -726,13 +839,13 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 "listings": db["listings"],
                 "history": db["history"]
             })
-        elif self.path.startswith("/gts/players"):
+        elif path_only.startswith("/gts/players"):
             self._send_json({
                 "success": True,
                 "online_count": len(db["active_players"]),
                 "players": db["active_players"]
             })
-        elif self.path.startswith("/gts/profile"):
+        elif path_only.startswith("/gts/profile"):
             trainer_id = None
             if "?" in self.path:
                 params = self.path.split("?")[1]
@@ -836,7 +949,7 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 "profile": merged_profile,
                 "account": account
             })
-        elif self.path.startswith("/gts/claims"):
+        elif path_only.startswith("/gts/claims"):
             trainer_id = None
             if "?" in self.path:
                 params = self.path.split("?")[1]
@@ -850,7 +963,7 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 "claims": claims,
                 "my_listings": listings
             })
-        elif self.path.startswith("/player/check_name"):
+        elif path_only.startswith("/player/check_name"):
             name = ""
             if "?" in self.path:
                 params = self.path.split("?")[1]
@@ -868,12 +981,12 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 "name": name,
                 "taken": taken
             })
-        elif self.path.startswith("/chat/history"):
+        elif path_only.startswith("/chat/history"):
             self._send_json({
                 "success": True,
                 "messages": db.get("chat", [])[-50:]
             })
-        elif self.path.startswith("/server/info"):
+        elif path_only.startswith("/server/info"):
             self._send_json({
                 "success": True,
                 "version": MOD_VERSION,
@@ -882,7 +995,7 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 "activePlayers": len(db.get("active_players", {})),
                 "totalAccounts": len(db.get("accounts", {}))
             })
-        elif self.path.startswith("/mmo/leaderboard"):
+        elif path_only.startswith("/mmo/leaderboard"):
             all_accounts = list(db.get("accounts", {}).values())
             # Filter out banned accounts
             valid_accounts = [a for a in all_accounts if not a.get("isBanned", False)]
@@ -916,14 +1029,14 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
             return
 
         client_ver = str(req.get("modVersion", req.get("version", ""))).strip()
-        # Mod Version Handshake: verify incoming client matches server mod version
-        if client_ver and client_ver != MOD_VERSION:
+        # Strict Mod Version Enforcement: Reject legacy or mismatched versions
+        if not client_ver or client_ver != MOD_VERSION:
             self._send_json({
                 "success": False,
                 "error": "VERSION_MISMATCH",
                 "serverVersion": MOD_VERSION,
-                "clientVersion": client_ver,
-                "message": f"VERSION MISMATCH!\nSERVER: V{MOD_VERSION}\nCLIENT: V{client_ver}\nPLEASE UPDATE YOUR MOD!"
+                "clientVersion": client_ver or "LEGACY_OUTDATED",
+                "message": f"VERSION MISMATCH! SERVER REQUIRES V{MOD_VERSION}, YOUR CLIENT IS ON V{client_ver or 'LEGACY'}. PLEASE UPDATE YOUR MOD!"
             }, status=426)
             return
 
@@ -956,7 +1069,7 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
 
             map_id = req.get("map")
             sprite_id = req.get("spriteId", "SPRITE_RED")
-
+            is_first_sync = (trainer_id not in db["active_players"])
             player_entry = {
                 "trainerId": trainer_id,
                 "sessionId": session_id,
@@ -974,10 +1087,17 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 "species": req.get("species"),
                 "title": req.get("title", "ROOKIE"),
                 "level": req.get("level", 1),
+                "modVersion": str(req.get("modVersion", req.get("version", MOD_VERSION))),
+                "gameVersion": str(req.get("gameVersion", "Pokemon Red")),
+                "recompVersion": str(req.get("recompVersion", "0.0.0-dev")),
+                "ip": client_ip,
                 "timestamp": now
             }
 
             db["active_players"][trainer_id] = player_entry
+
+            if is_first_sync:
+                print(f"[MMO Active Player] {player_entry['name']} (ID {trainer_id}) | Map: {map_id} | Mod: v{player_entry['modVersion']} | Game: {player_entry['gameVersion']} | Recomp: {player_entry['recompVersion']} | IP: {client_ip}")
 
             # Fast cleanup for inactive players (> 30s)
             for tid, pdata in list(db["active_players"].items()):
@@ -1009,6 +1129,15 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
             trainer_id = str(req.get("trainerId"))
             name = req.get("name", "TRAINER").strip()
             sprite_id = req.get("spriteId", "SPRITE_RED")
+            title = req.get("title", "NOVICE")
+
+            if contains_profanity(name):
+                self._send_json({"success": False, "error": "Name contains inappropriate language"}, status=400)
+                return
+
+            if contains_profanity(title):
+                self._send_json({"success": False, "error": "Title contains inappropriate language"}, status=400)
+                return
 
             # Check if name is already registered by another trainerId
             name_upper = name.upper()
@@ -1290,8 +1419,10 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
 
         elif action == "deposit":
             trainer_id = str(req.get("trainerId"))
-            trainer_name = req.get("trainerName", "TRAINER")
-            offered_mon = req.get("offeredMon")
+            trainer_name = censor_profanity(req.get("trainerName", "TRAINER"))
+            offered_mon = req.get("offeredMon", {})
+            if offered_mon and "nickname" in offered_mon:
+                offered_mon["nickname"] = censor_profanity(offered_mon["nickname"])
             wanted = req.get("wanted", [])
 
             current_count = db["user_counts"].get(trainer_id, 0)
@@ -1471,7 +1602,7 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
         elif action == "holdem_join":
             t_id = req.get("tableId", "table_50")
             trainer_id = str(req.get("trainerId", "0"))
-            trainer_name = req.get("name", "TRAINER")
+            trainer_name = censor_profanity(req.get("name", "TRAINER"))
             buy_in = int(req.get("buyIn", 500))
             if t_id not in holdem_tables:
                 self._send_json({"success": False, "error": "Table not found"}, status=404)
