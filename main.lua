@@ -60,6 +60,7 @@ return function(mod)
   local challengeWaitTimer = 0
   local lastBattleEndTime = -999 -- Cooldown: ignore challenges for 5s after battle ends
   local inBattle = false          -- Guard: prevents double-starting a battle from duplicate messages
+  local clientSessionId = string.format("%08x%08x", love.math.random(10000000, 99999999), os.time())
 
   -- MMO Multi-Player NPC Registry (trainerId -> NPC object)
   local netNpcs = {}       -- trainerId -> human NPC object
@@ -272,8 +273,12 @@ return function(mod)
     return nil
   end
 
+  local MOD_VERSION = "0.3.2"
+
   local function gtsApiPost(payload, timeout)
     if not ltn12 then return nil end
+    payload = payload or {}
+    payload.modVersion = payload.modVersion or MOD_VERSION
     local jsonStr = Json.encode(payload)
     local response_body = {}
     local ok, res, code, headers, status = makeHttpRequest({
@@ -287,10 +292,10 @@ return function(mod)
       sink = ltn12.sink.table(response_body),
       timeout = timeout or 0.5
     })
-    if ok and code == 200 and #response_body > 0 then
+    if ok and #response_body > 0 then
       local str = table.concat(response_body)
-      local data = Json.decode(str)
-      return data
+      local okJson, data = pcall(Json.decode, str)
+      if okJson and data then return data end
     end
     return nil
   end
@@ -450,8 +455,17 @@ return function(mod)
     local respStr = netInChannel:pop()
     while respStr do
       local ok, res = pcall(Json.decode, respStr)
-      if ok and res and res.success then
-        -- 1. Route multi-player positions if overworld active
+      if ok and res then
+        if res.error == "VERSION_MISMATCH" then
+          handleDisconnect(game, string.format("VERSION MISMATCH!\nSERVER IS ON V%s\nCLIENT IS ON V%s\nPLEASE UPDATE MOD!", res.serverVersion or "NEW", MOD_VERSION))
+          return
+        elseif res.error == "ALREADY_LOGGED_IN" or res.error == "BANNED" then
+          handleDisconnect(game, (res.message or "ACCOUNT ALREADY ACTIVE ON ANOTHER DEVICE!\nDISCONNECTED FOR SAFETY."))
+          return
+        end
+
+        if res.success then
+          -- 1. Route multi-player positions if overworld active
         if res.players and game.overworld then
           syncMultiNetPlayers(game, game.overworld, res.players)
         end
@@ -723,6 +737,7 @@ return function(mod)
     localSelectedSprite = acc.spriteId or "SPRITE_RED"
     if acc.title then localTrainerTitle = acc.title end
     if acc.favoriteMon then localFavoriteMon = acc.favoriteMon end
+    if acc.blackouts then save.blackoutCount = acc.blackouts end
   end
 
   local function saveOnlineAccount(save)
@@ -736,6 +751,7 @@ return function(mod)
     save.onlineAccount.spriteId = localSelectedSprite
     save.onlineAccount.title = localTrainerTitle
     save.onlineAccount.favoriteMon = localFavoriteMon
+    save.onlineAccount.blackouts = save.blackoutCount or 0
   end
 
   local function syncLocalProfile(game, winDelta)
@@ -750,6 +766,7 @@ return function(mod)
       badges = getBadgeCount(game.save),
       pokedexCount = getPokedexCount(game.save),
       pvpWins = winDelta or 0,
+      blackouts = (game.save and game.save.blackoutCount) or 0,
       favoriteMon = localFavoriteMon
     }, 1.5)
   end
@@ -1291,6 +1308,12 @@ return function(mod)
     local pokedexCount = tonumber(profile.pokedexCount or (isMe and getPokedexCount(game.save)) or 0)
     local favMon = profile.favoriteMon or (isMe and localFavoriteMon) or "PIKACHU"
 
+    local expVal = tonumber(profile.xp or (isMe and mmoXp) or (rawData and rawData.xp) or 0)
+    local nextLvlTarget = calculateXpForLevel(level + 1)
+    local expNeeded = (level >= 100) and 0 or math.max(0, nextLvlTarget - expVal)
+
+    local blackouts = tonumber(profile.blackouts or profile.blackoutCount or (isMe and game.save and game.save.blackoutCount) or (rawData and rawData.blackouts) or 0)
+
     if #name > 10 then name = name:sub(1, 10) end
     if #rank > 14 then rank = rank:sub(1, 14) end
     if #favMon > 10 then favMon = favMon:sub(1, 10) end
@@ -1305,17 +1328,56 @@ return function(mod)
       end,
       draw = function(self)
         Font.drawBox(1, 0, 18, 17)
-        Font.draw("TRAINER CARD", 24, 10)
-        Font.draw(string.format("NAME: %s", name), 16, 22)
-        Font.draw(string.format("LEVEL: %d/100", level), 16, 34)
-        Font.draw(string.format("RANK: %s", rank), 16, 46)
+        Font.draw("TRAINER CARD", 24, 8)
+        Font.draw(string.format("NAME: %s", name), 16, 18)
+        Font.draw(string.format("LEVEL: %d/100", level), 16, 28)
+        Font.draw(string.format("EXP: %d (NEXT %d)", expVal, expNeeded), 16, 38)
+        Font.draw(string.format("RANK: %s", rank), 16, 48)
         Font.draw(string.format("SERVER: #%d/%d", serverRank, totalPlayers), 16, 58)
-        Font.draw(string.format("PVP: %dW / %dL", pvpWins, pvpLosses), 16, 70)
-        Font.draw(string.format("TRADES: %d", gtsTrades), 16, 82)
-        Font.draw(string.format("BADGES: %d/8", badges), 16, 94)
-        Font.draw(string.format("POKEDEX: %d", pokedexCount), 16, 106)
+        Font.draw(string.format("PVP: %dW / %dL", pvpWins, pvpLosses), 16, 68)
+        Font.draw(string.format("TRADES: %d", gtsTrades), 16, 78)
+        Font.draw(string.format("BADGES: %d/8", badges), 16, 88)
+        Font.draw(string.format("POKEDEX: %d", pokedexCount), 16, 98)
+        Font.draw(string.format("BLACKOUTS: %d", blackouts), 16, 108)
         Font.draw(string.format("FAV: %s", favMon), 16, 118)
-        Font.draw("PRESS A/B TO CLOSE", 16, 130)
+        Font.draw("PRESS A/B TO CLOSE", 16, 128)
+      end
+    }
+    game.stack:push(container)
+  end
+
+  -- View Dedicated Level, Experience Points & Next Level Info Screen
+  local function openMmoLevelInfoScreen(game)
+    local lvl = mmoLevel or 1
+    local xp = mmoXp or 0
+    local nextLvlXp = calculateXpForLevel(lvl + 1)
+    local needed = (lvl >= 100) and 0 or math.max(0, nextLvlXp - xp)
+    local trainerId, trainerName = getTrainerInfo(game.save)
+
+    local container = {
+      isOverworld = false,
+      update = function(self, dt)
+        local input = game.input
+        if input:wasPressed("b") or input:wasPressed("a") then
+          game.stack:pop()
+        end
+      end,
+      draw = function(self)
+        Font.drawBox(1, 0, 18, 17)
+        Font.draw("LEVEL & EXPERIENCE", 16, 10)
+        Font.draw(string.format("PLAYER: %s", (trainerName or "RED"):sub(1, 10)), 16, 24)
+        Font.draw(string.format("CURRENT LVL: %d/100", lvl), 16, 40)
+        Font.draw(string.format("CURRENT EXP: %d", xp), 16, 56)
+        if lvl >= 100 then
+          Font.draw("STATUS: MAX LEVEL!", 16, 76)
+          Font.draw("NEXT LEVEL: NONE", 16, 92)
+          Font.draw("EXP NEEDED: 0", 16, 108)
+        else
+          Font.draw(string.format("NEXT LEVEL: LV%d", lvl + 1), 16, 76)
+          Font.draw(string.format("TARGET EXP: %d", nextLvlXp), 16, 92)
+          Font.draw(string.format("EXP NEEDED: %d", needed), 16, 108)
+        end
+        Font.draw("PRESS A/B TO CLOSE", 16, 126)
       end
     }
     game.stack:push(container)
@@ -1781,6 +1843,19 @@ return function(mod)
         end
       },
       {
+        label = "VIEW RECOVERY TOKEN",
+        onSelect = function()
+          local tokStr = mmoToken or (game.save and game.save.onlineAccount and game.save.onlineAccount.token) or "NONE"
+          game.stack:push(TextBox.new(game, wrapText(string.format("YOUR RECOVERY TOKEN:\n%s\nSAVE THIS TOKEN TO RESTORE ON ANY DEVICE!", tokStr))))
+        end
+      },
+      {
+        label = "REDEEM RECOVERY TOKEN",
+        onSelect = function()
+          openRedeemTokenMenu(game)
+        end
+      },
+      {
         label = "SELECT TRAINER TITLE",
         onSelect = function()
           local titleItems = {}
@@ -1843,6 +1918,72 @@ return function(mod)
       end
       return p
     end
+  end
+
+  -- Redeem Recovery Token to Restore Lost Save
+  openRedeemTokenMenu = function(game)
+    local NamingScreen = require("src.ui.NamingScreen")
+    Screens.push(game, "NamingScreen", {
+      maxLen = 8,
+      onDone = function(enteredToken)
+        if not enteredToken or #enteredToken == 0 then return end
+        enteredToken = enteredToken:gsub("%s+", ""):upper()
+
+        local res = gtsApiPost({ action = "redeem_token", token = enteredToken }, 3.0)
+        if res and res.success and res.account then
+          local acc = res.account
+          mmoLevel = acc.level or 1
+          mmoXp = acc.xp or 0
+          mmoToken = acc.token or enteredToken
+          localSelectedSprite = acc.spriteId or "SPRITE_RED"
+          if acc.title then localTrainerTitle = acc.title end
+          if acc.favoriteMon then localFavoriteMon = acc.favoriteMon end
+
+          local SaveDataModule = pcall(require, "src.core.SaveData") and require("src.core.SaveData") or nil
+          local bootCfg = game.bootConfig and game:bootConfig() or nil
+          local newSave = (SaveDataModule and SaveDataModule.newGame and SaveDataModule.newGame(bootCfg)) or {}
+
+          newSave.player = newSave.player or {}
+          newSave.player.name = acc.name or "RED"
+          newSave.player.id = acc.trainerId or getTrainerInfo(game.save)
+          newSave.player.map = "PALLET_TOWN"
+          newSave.player.x = 5
+          newSave.player.y = 6
+          newSave.player.facing = "down"
+          newSave.player.surfing = false
+          newSave.lastHeal = { map = "PALLET_TOWN", x = 5, y = 6 }
+          newSave.lastOutdoor = { id = "PALLET_TOWN", x = 5, y = 6 }
+          newSave.money = 3000
+          newSave.blackoutCount = acc.blackoutCount or 0
+          newSave.onlineAccount = acc
+
+          game.save = newSave
+          if game.adoptSave then game:adoptSave(game.save) end
+          saveOnlineAccount(game.save)
+          writeOnlineSave(game.save)
+
+          applyPlayerSprite(game, localSelectedSprite)
+          isGtsServerConnected = true
+
+          if game.overworld then
+            game.overworld.lastOutdoor = { id = "PALLET_TOWN", x = 5, y = 6 }
+            if game.overworld.setMap then
+              pcall(function() game.overworld:setMap("PALLET_TOWN", 5, 6, "down") end)
+            end
+          end
+
+          syncLocalProfile(game, 0)
+          fetchGtsServerSync(acc.trainerId)
+
+          game.stack:push(TextBox.new(game, wrapText(string.format("TOKEN REDEEMED!\nWELCOME BACK, %s!\nMMO LEVEL %d RESTORED!", acc.name or "TRAINER", mmoLevel)), function()
+            openOnlineOptionsMenu(game)
+          end))
+        else
+          local err = (res and res.error) or "TOKEN NOT FOUND"
+          game.stack:push(TextBox.new(game, wrapText(string.format("ERROR: %s!\nCOULD NOT RESTORE SAVE.", err))))
+        end
+      end
+    })
   end
 
   -- Fresh Online Player Creation & Authentic Naming Screen
@@ -1942,7 +2083,7 @@ return function(mod)
                     name = chosenName,
                     spriteId = localSelectedSprite,
                     title = localTrainerTitle,
-                    level = mmoLevel,
+                    level = 1,
                     map = ow.map.id,
                     x = p.cellX,
                     y = p.cellY,
@@ -1951,22 +2092,18 @@ return function(mod)
                     fx = p.cellX - delta[1],
                     fy = p.cellY - delta[2],
                     facing = p.facing,
-                    moving = p.moving,
+                    moving = false,
                     species = followerSpecies
                   })
                 })
               end
 
-              game.stack:push(TextBox.new(game, wrapText(string.format("WELCOME %s!\nSTARTING ONLINE ADVENTURE!\nTOKEN: %s", chosenName, mmoToken))))
+              game.stack:push(TextBox.new(game, wrapText(string.format("PLAYER CREATED!\nTOKEN: %s\nWELCOME TO GEN 1 ONLINE!", acc.token or "READY")), function()
+                openOnlineOptionsMenu(game)
+              end))
             else
-              local err = (res and res.error) or "NETWORK_ERROR"
-              if err == "NAME_TAKEN" then
-                game.stack:push(TextBox.new(game, wrapText("NAME ALREADY TAKEN! PLEASE CHOOSE ANOTHER."), function()
-                  openFreshOnlinePlayerMenu(game)
-                end))
-              else
-                game.stack:push(TextBox.new(game, wrapText("CANNOT REGISTER ACCOUNT ON SERVER!")))
-              end
+              local err = (res and res.error) or "NAME TAKEN OR SERVER BUSY"
+              game.stack:push(TextBox.new(game, wrapText(string.format("COULD NOT CREATE PLAYER!\n%s", err))))
             end
           end
         })
@@ -1974,27 +2111,45 @@ return function(mod)
       game.stack:push(Menu.new(game, spriteItems, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
     end
 
-    -- Launch Authentic Vanilla NamingScreen directly (letter grid)
-    local defaultName = (game.save and game.save.player and game.save.player.name) or "RED"
-    local namingScreen = NamingScreen.new(game, {
-      title = Strings("YOUR NAME?"),
-      maxLen = 7,
-      default = defaultName,
-      onDone = function(enteredName)
-        enteredName = (enteredName or ""):gsub("^%s+", ""):gsub("%s+$", "")
-        if #enteredName == 0 then enteredName = "RED" end
+    local function startNewCharacterFlow()
+      local defaultName = (game.save and game.save.player and game.save.player.name) or "RED"
+      local namingScreen = NamingScreen.new(game, {
+        title = Strings("YOUR NAME?"),
+        maxLen = 7,
+        default = defaultName,
+        onDone = function(enteredName)
+          enteredName = (enteredName or ""):gsub("^%s+", ""):gsub("%s+$", "")
+          if #enteredName == 0 then enteredName = "RED" end
 
-        local check = gtsApiGet("/player/check_name?name=" .. enteredName, 1.5)
-        if check and check.taken then
-          game.stack:push(TextBox.new(game, wrapText(string.format("NAME '%s' IS TAKEN ON SERVER! CHOOSE ANOTHER.", enteredName)), function()
-            openFreshOnlinePlayerMenu(game)
-          end))
-        else
-          pickCharacterSprite(enteredName)
+          local check = gtsApiGet("/player/check_name?name=" .. enteredName, 1.5)
+          if check and check.taken then
+            game.stack:push(TextBox.new(game, wrapText(string.format("NAME '%s' IS TAKEN ON SERVER! CHOOSE ANOTHER.", enteredName)), function()
+              openFreshOnlinePlayerMenu(game)
+            end))
+          else
+            pickCharacterSprite(enteredName)
+          end
         end
-      end
-    })
-    game.stack:push(namingScreen)
+      })
+      game.stack:push(namingScreen)
+    end
+
+    local connectOptions = {
+      {
+        label = "CREATE NEW PLAYER",
+        onSelect = function()
+          startNewCharacterFlow()
+        end
+      },
+      {
+        label = "REDEEM RECOVERY TOKEN",
+        onSelect = function()
+          openRedeemTokenMenu(game)
+        end
+      }
+    }
+
+    game.stack:push(Menu.new(game, connectOptions, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
   end
 
   -- In-Game Global & Local MMO Chat Menu
@@ -2082,12 +2237,26 @@ return function(mod)
         end
       },
       {
+        label = string.format("EXP & LEVEL (LV%d)", mmoLevel or 1),
+        onSelect = function()
+          openMmoLevelInfoScreen(game)
+        end
+      },
+      {
         label = "GLOBAL MMO CHAT",
         onSelect = function() openMmoChatMenu(game) end
       },
       {
         label = "ONLINE SETTINGS",
         onSelect = function() openMyProfileMenu(game) end
+      },
+      {
+        label = string.format("VERSION: V%s", MOD_VERSION),
+        onSelect = function()
+          local srvInfo = gtsApiGet("/server/info", 1.5)
+          local srvVer = (srvInfo and (srvInfo.modVersion or srvInfo.version)) or MOD_VERSION
+          game.stack:push(TextBox.new(game, wrapText(string.format("MOD VERSION: V%s\nSERVER VERSION: V%s\nPROTOCOLS SYNCED!", MOD_VERSION, srvVer))))
+        end
       },
       {
         label = "RESET / SWITCH SAVE",
@@ -2128,12 +2297,22 @@ return function(mod)
 
   -- Connect to Server Flow (Dual Save State: Checks save_online.lua vs creating fresh online character)
   local function handleConnectToServer(game)
-    -- 1. Backup the local offline save in memory
+    -- 1. Verify Mod Version Handshake with Server First
+    local srvInfo = gtsApiGet("/server/info", 2.0)
+    if srvInfo and (srvInfo.modVersion or srvInfo.version) then
+      local srvVer = srvInfo.modVersion or srvInfo.version
+      if srvVer ~= MOD_VERSION then
+        game.stack:push(TextBox.new(game, wrapText(string.format("VERSION MISMATCH!\nSERVER IS ON V%s\nYOUR MOD IS ON V%s\nPLEASE UPDATE TO PLAY!", srvVer, MOD_VERSION))))
+        return
+      end
+    end
+
+    -- 2. Backup the local offline save in memory
     if game and game.save and not isGtsServerConnected then
       offlineSaveBackup = game.save
     end
 
-    -- 2. Check if a dedicated online save (save_online.lua) exists on disk
+    -- 3. Check if a dedicated online save (save_online.lua) exists on disk
     local onlineSave = loadOnlineSave()
     if onlineSave and onlineSave.onlineAccount and onlineSave.onlineAccount.token and onlineSave.onlineAccount.name then
       game.save = onlineSave
@@ -2204,6 +2383,18 @@ return function(mod)
     local isConnected = isGtsServerConnected and hasAccount
     local menuLabel = isConnected and "ONLINE OPTIONS" or "CONNECT TO SERVER"
 
+    local curLvl = mmoLevel or 1
+    local curXp = mmoXp or 0
+    local nextReq = calculateXpForLevel(curLvl + 1)
+    local toNext = (curLvl >= 100) and 0 or math.max(0, nextReq - curXp)
+
+    local expItem = {
+      label = string.format("EXP: LV%d (%d)", curLvl, toNext),
+      onSelect = function()
+        openMmoLevelInfoScreen(game)
+      end,
+    }
+
     local newItem = {
       label = menuLabel,
       onSelect = function()
@@ -2218,14 +2409,146 @@ return function(mod)
     local inserted = false
     for i, item in ipairs(list) do
       if item and item.label and (tostring(item.label):find("OPTION") or tostring(item.label):find("SAVE")) then
-        table.insert(list, i, newItem)
+        if isConnected then
+          table.insert(list, i, expItem)
+          table.insert(list, i + 1, newItem)
+        else
+          table.insert(list, i, newItem)
+        end
         inserted = true
         break
       end
     end
-    if not inserted then table.insert(list, newItem) end
+    if not inserted then
+      if isConnected then table.insert(list, expItem) end
+      table.insert(list, newItem)
+    end
     return list
   end)
+
+  -- =========================================================================
+  -- AUTOMATIC IMMEDIATE SAVE & SYNC ON ALL TRAINER / PARTY / TRADE / BATTLE ACTIONS
+  -- =========================================================================
+
+  -- 1. Battles Finished (Wild & Trainer Battles)
+  mod.hooks:on("battle.ended", function(payload)
+    if Game and Game.save then
+      if payload and payload.result == "win" then
+        addMmoXp(Game, "trainer_battle")
+      elseif payload and payload.result == "wild_win" then
+        addMmoXp(Game, "wild_battle")
+      end
+      performForcedSave(Game)
+      syncLocalProfile(Game, 0)
+    end
+  end)
+
+  -- 2. Pokémon Caught
+  mod.hooks:on("pokemon.caught", function(payload)
+    if Game and Game.save then
+      addMmoXp(Game, "catch")
+      performForcedSave(Game)
+      syncLocalProfile(Game, 0)
+    end
+  end)
+
+  -- 3. Pokémon Evolved & Move Learned
+  mod.hooks:on("pokemon.evolved", function(payload)
+    if Game and Game.save then
+      addMmoXp(Game, "breeding", 50)
+      performForcedSave(Game)
+      syncLocalProfile(Game, 0)
+    end
+  end)
+
+  mod.hooks:on("pokemon.level_up", function(payload)
+    if Game and Game.save then
+      performForcedSave(Game)
+    end
+  end)
+
+  mod.hooks:on("pokemon.move_learned", function(payload)
+    if Game and Game.save then
+      performForcedSave(Game)
+    end
+  end)
+
+  -- 4. Trades & Pokémon Received
+  mod.hooks:on("trade.completed", function(payload)
+    if Game and Game.save then
+      performForcedSave(Game)
+      syncLocalProfile(Game, 0)
+    end
+  end)
+
+  mod.hooks:on("pokemon.received", function(payload)
+    if Game and Game.save then
+      performForcedSave(Game)
+      syncLocalProfile(Game, 0)
+    end
+  end)
+
+  -- 5. Trainer Badges & Story Milestone Flags
+  mod.hooks:on("flag.changed", function(payload)
+    if Game and Game.save then
+      performForcedSave(Game)
+      syncLocalProfile(Game, 0)
+    end
+  end)
+
+  -- 6. Blackout / Party Fainted
+  mod.hooks:on("world.blacked_out", function(payload)
+    if Game and Game.save then
+      Game.save.blackoutCount = (Game.save.blackoutCount or 0) + 1
+      saveOnlineAccount(Game.save)
+      performForcedSave(Game)
+      syncLocalProfile(Game, 0)
+    end
+  end)
+
+  -- 7. Nurse Joy Healing Finished
+  local origFinishNurseHeal = OverworldState.finishNurseHeal
+  OverworldState.finishNurseHeal = function(self, bye, onDone)
+    if Game and Game.save then
+      performForcedSave(Game)
+      syncLocalProfile(Game, 0)
+    end
+    if origFinishNurseHeal then
+      return origFinishNurseHeal(self, bye, onDone)
+    end
+  end
+
+  -- 8. PC Box Storage Operations
+  local BoxesModule = pcall(require, "src.pokemon.Boxes") and require("src.pokemon.Boxes") or nil
+  if BoxesModule and BoxesModule.deposit then
+    local origDeposit = BoxesModule.deposit
+    BoxesModule.deposit = function(save, mon)
+      local res = origDeposit(save, mon)
+      if Game and Game.save then performForcedSave(Game) end
+      return res
+    end
+  end
+
+  -- 9. Bag & Inventory Operations
+  local BagModule = pcall(require, "src.inventory.Bag") and require("src.inventory.Bag") or nil
+  if BagModule then
+    if BagModule.add then
+      local origBagAdd = BagModule.add
+      BagModule.add = function(save, itemId, count, data)
+        local res = origBagAdd(save, itemId, count, data)
+        if Game and Game.save then performForcedSave(Game) end
+        return res
+      end
+    end
+    if BagModule.remove then
+      local origBagRemove = BagModule.remove
+      BagModule.remove = function(save, itemId, count)
+        local res = origBagRemove(save, itemId, count)
+        if Game and Game.save then performForcedSave(Game) end
+        return res
+      end
+    end
+  end
 
   -- Hook Map Transition to clear and re-sync overworld entities
   local origSetMap = OverworldState.setMap
@@ -2305,6 +2628,7 @@ return function(mod)
           body = Json.encode({
             action = "sync_pos",
             trainerId = trainerId,
+            sessionId = clientSessionId,
             name = trainerName,
             title = localTrainerTitle,
             map = self.map.id,
@@ -2359,6 +2683,7 @@ return function(mod)
         local payload = {
           action = "sync_pos",
           trainerId = trainerId,
+          sessionId = clientSessionId,
           name = trainerName,
           spriteId = localSelectedSprite,
           title = localTrainerTitle,

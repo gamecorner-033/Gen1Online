@@ -1,7 +1,7 @@
 [card]
 id = "gen1online"
 title = "Gen1Online"
-version = "0.1.0"
+version = "0.3.2"
 author = "Antigravity & User"
 category = "CONTENT"
 tags = ["multiplayer", "coop", "online", "pvp", "voxel"]

@@ -28,6 +28,8 @@ PORT = int(os.environ.get("PORT", 7779))
 DB_FILE = os.environ.get("GTS_DB_PATH", os.path.join(os.path.dirname(__file__), "gts_database.json"))
 BACKUP_DB_FILE = os.environ.get("GTS_BACKUP_PATH", os.path.join(os.path.dirname(__file__), "players_backup.json"))
 
+MOD_VERSION = "0.3.2"
+
 LISTING_TTL_SECONDS = 30 * 86400
 CLAIM_TTL_SECONDS = 60 * 86400
 PLAYER_TIMEOUT_SECONDS = 30  # 30s timeout guard for map transitions
@@ -278,10 +280,46 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
             wild_battles = account.get("wildBattles", 0)
             trainer_battles = account.get("trainerBattles", 0)
             
-            # Calculate server-wide ranking
-            all_accs = list(db.get("accounts", {}).values())
-            all_accs.sort(key=lambda a: (a.get("level", 1), a.get("xp", 0), a.get("pvpWins", 0), a.get("badges", 0)), reverse=True)
-            server_rank_num = 1
+            # Calculate server-wide ranking (1/N is highest rank, N/N is lowest rank with live total count)
+            all_accs_dict = {}
+            for tid, acc in db.get("accounts", {}).items():
+                if not acc.get("isBanned", False):
+                    all_accs_dict[str(tid)] = acc
+
+            for tid, p in db.get("profiles", {}).items():
+                if str(tid) not in all_accs_dict and str(tid) not in db.get("banned_trainers", {}):
+                    all_accs_dict[str(tid)] = {
+                        "trainerId": str(tid),
+                        "name": p.get("name", "TRAINER"),
+                        "level": p.get("level", 1),
+                        "xp": p.get("xp", 0),
+                        "pvpWins": p.get("pvpWins", 0),
+                        "badges": p.get("badges", 0),
+                        "pokedexCount": p.get("pokedexCount", 0)
+                    }
+
+            if str(trainer_id) not in all_accs_dict and trainer_id is not None and str(trainer_id) not in db.get("banned_trainers", {}):
+                all_accs_dict[str(trainer_id)] = {
+                    "trainerId": str(trainer_id),
+                    "name": account.get("name", profile.get("name", "TRAINER")),
+                    "level": level,
+                    "xp": xp,
+                    "pvpWins": pvp_wins,
+                    "badges": account.get("badges", profile.get("badges", 0)),
+                    "pokedexCount": account.get("pokedexCount", profile.get("pokedexCount", 0))
+                }
+
+            all_accs = list(all_accs_dict.values())
+            all_accs.sort(key=lambda a: (
+                int(a.get("level", 1)),
+                int(a.get("xp", 0)),
+                int(a.get("pvpWins", 0)),
+                int(a.get("badges", 0)),
+                int(a.get("pokedexCount", 0))
+            ), reverse=True)
+
+            total_players_count = max(1, len(all_accs))
+            server_rank_num = total_players_count
             for idx, a in enumerate(all_accs, start=1):
                 if str(a.get("trainerId")) == str(trainer_id):
                     server_rank_num = idx
@@ -301,6 +339,7 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 else: return "NOVICE"
                 
             rank = profile.get("rank") or get_rank(level, pvp_wins)
+            blackouts = account.get("blackoutCount", profile.get("blackouts", 0))
             merged_profile = {
                 "trainerId": trainer_id,
                 "name": account.get("name", profile.get("name", "TRAINER")),
@@ -308,7 +347,7 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 "xp": xp,
                 "rank": rank,
                 "serverRank": server_rank_num,
-                "totalPlayers": max(1, len(all_accs)),
+                "totalPlayers": total_players_count,
                 "title": profile.get("title", "ACE TRAINER"),
                 "badges": account.get("badges", profile.get("badges", 0)),
                 "pokedexCount": account.get("pokedexCount", profile.get("pokedexCount", 0)),
@@ -316,6 +355,8 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 "pvpLosses": pvp_losses,
                 "wildBattles": wild_battles,
                 "trainerBattles": trainer_battles,
+                "blackouts": blackouts,
+                "blackoutCount": blackouts,
                 "favoriteMon": profile.get("favoriteMon", "PIKACHU"),
                 "gtsTrades": gts_trades
             }
@@ -361,6 +402,15 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 "success": True,
                 "messages": db.get("chat", [])[-50:]
             })
+        elif self.path.startswith("/server/info"):
+            self._send_json({
+                "success": True,
+                "version": MOD_VERSION,
+                "modVersion": MOD_VERSION,
+                "serverName": "Gen 1 Online Official MMO Server",
+                "activePlayers": len(db.get("active_players", {})),
+                "totalAccounts": len(db.get("accounts", {}))
+            })
         elif self.path.startswith("/mmo/leaderboard"):
             all_accounts = list(db.get("accounts", {}).values())
             # Filter out banned accounts
@@ -394,6 +444,18 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
             self._send_json({"error": "Invalid JSON"}, status=400)
             return
 
+        client_ver = str(req.get("modVersion", req.get("version", ""))).strip()
+        # Mod Version Handshake: verify incoming client matches server mod version
+        if client_ver and client_ver != MOD_VERSION:
+            self._send_json({
+                "success": False,
+                "error": "VERSION_MISMATCH",
+                "serverVersion": MOD_VERSION,
+                "clientVersion": client_ver,
+                "message": f"VERSION MISMATCH!\nSERVER: V{MOD_VERSION}\nCLIENT: V{client_ver}\nPLEASE UPDATE YOUR MOD!"
+            }, status=426)
+            return
+
         action = req.get("action")
         now = int(time.time())
 
@@ -405,11 +467,28 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 self._send_json({"success": False, "error": "BANNED"}, status=403)
                 return
 
+            session_id = str(req.get("sessionId", "")).strip()
+            existing_player = db["active_players"].get(trainer_id)
+
+            # Duplicate Player Failsafe: Ensure 2 of the same player cannot be active simultaneously
+            if existing_player and session_id:
+                old_session = str(existing_player.get("sessionId", "")).strip()
+                old_ts = existing_player.get("timestamp", 0)
+                # If another session is actively pinging within the last 10 seconds:
+                if old_session and old_session != session_id and (now - old_ts < 10):
+                    self._send_json({
+                        "success": False,
+                        "error": "ALREADY_LOGGED_IN",
+                        "message": "ACCOUNT ALREADY ACTIVE ON ANOTHER DEVICE!"
+                    }, status=409)
+                    return
+
             map_id = req.get("map")
             sprite_id = req.get("spriteId", "SPRITE_RED")
 
             player_entry = {
                 "trainerId": trainer_id,
+                "sessionId": session_id,
                 "name": req.get("name", "TRAINER"),
                 "spriteId": sprite_id,
                 "map": map_id,
@@ -503,6 +582,34 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
             self._send_json({
                 "success": True,
                 "account": account
+            })
+
+        # 3. Player Token Redemption & Save Restoration Endpoint
+        elif action == "redeem_token":
+            raw_token = str(req.get("token", "")).strip().upper()
+            if not raw_token:
+                self._send_json({"success": False, "error": "EMPTY_TOKEN"}, status=400)
+                return
+
+            found_account = None
+            for tid, acc in db.get("accounts", {}).items():
+                if str(acc.get("token", "")).strip().upper() == raw_token:
+                    found_account = acc
+                    break
+
+            if not found_account:
+                self._send_json({"success": False, "error": "TOKEN_NOT_FOUND"}, status=404)
+                return
+
+            if found_account.get("isBanned", False):
+                self._send_json({"success": False, "error": "BANNED"}, status=403)
+                return
+
+            profile = db.get("profiles", {}).get(str(found_account.get("trainerId")), {})
+            self._send_json({
+                "success": True,
+                "account": found_account,
+                "profile": profile
             })
 
         # 3. Synchronized XP Gain & Leveling Verification
@@ -691,10 +798,19 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
             if "title" in req: profile["title"] = req["title"]
             if "badges" in req: profile["badges"] = req["badges"]
             if "pokedexCount" in req: profile["pokedexCount"] = req["pokedexCount"]
+            if "blackouts" in req: profile["blackouts"] = int(req["blackouts"])
+            if "blackoutCount" in req: profile["blackouts"] = int(req["blackoutCount"])
             if "gtsTrades" in req: profile["gtsTrades"] = (profile.get("gtsTrades", 0) + req["gtsTrades"])
             if "pvpWins" in req: profile["pvpWins"] = (profile.get("pvpWins", 0) + req["pvpWins"])
             if "favoriteMon" in req: profile["favoriteMon"] = req["favoriteMon"]
             profile["timestamp"] = now
+
+            # Also update account record if present
+            if trainer_id in db.get("accounts", {}):
+                if "blackouts" in req: db["accounts"][trainer_id]["blackoutCount"] = int(req["blackouts"])
+                if "blackoutCount" in req: db["accounts"][trainer_id]["blackoutCount"] = int(req["blackoutCount"])
+                if "badges" in req: db["accounts"][trainer_id]["badges"] = req["badges"]
+                if "pokedexCount" in req: db["accounts"][trainer_id]["pokedexCount"] = req["pokedexCount"]
 
             db["profiles"][trainer_id] = profile
             save_db()
