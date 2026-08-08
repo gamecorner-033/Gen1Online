@@ -157,41 +157,104 @@ function View.cardLayout(count)
   return out
 end
 
-function View.drawCard(card, x, y, hidden, emphasis)
-  if emphasis then
-    color(C.goldDark, 0.55)
-    rect("fill", x - 2, y - 2, 24, 33)
+local CARD_IMAGES = {}
+local SUIT_MAP = {
+  C = "clubs", D = "diamonds", H = "hearts", S = "spades",
+  c = "clubs", d = "diamonds", h = "hearts", s = "spades",
+  CLUBS = "clubs", DIAMONDS = "diamonds", HEARTS = "hearts", SPADES = "spades"
+}
+
+local function getCardImage(suitKey, rankKey)
+  local s = SUIT_MAP[suitKey] or "spades"
+  local r = tostring(rankKey):lower()
+  local key = s .. "_" .. r
+  if CARD_IMAGES[key] ~= nil then
+    return CARD_IMAGES[key]
   end
-  -- Cut one pixel from each corner for a deliberate playing-card silhouette.
-  color(C.ink, 0.55); rect("fill", x + 2, y + 2, 20, 29)
-  color(C.ink); rect("fill", x + 1, y, 18, 29); rect("fill", x, y + 1, 20, 27)
-  color(C.paperShade); rect("fill", x + 2, y + 1, 16, 27); rect("fill", x + 1, y + 2, 18, 25)
-  color(hidden and C.back or C.paper)
-  rect("fill", x + 2, y + 2, 16, 25); rect("fill", x + 3, y + 1, 14, 27)
+
+  local candidates = {
+    "assets/cards/" .. s .. "/cards_" .. s .. "_" .. r .. ".png",
+    "mods/gen1online-gamecorner/assets/cards/" .. s .. "/cards_" .. s .. "_" .. r .. ".png",
+    "mods/gen1online/assets/cards/" .. s .. "/cards_" .. s .. "_" .. r .. ".png",
+    "mods/Gen1Online-main/assets/cards/" .. s .. "/cards_" .. s .. "_" .. r .. ".png",
+    "mods/gen1recomp-blackjack-corner-main/assets/cards/" .. s .. "/cards_" .. s .. "_" .. r .. ".png",
+  }
+
+  -- 1. Try io.open raw bytes + newFileData (works across all OS working directories)
+  if io and io.open and love and love.filesystem and love.filesystem.newFileData and love.graphics and love.graphics.newImage then
+    for _, path in ipairs(candidates) do
+      local f = io.open(path, "rb")
+      if f then
+        local data = f:read("*a")
+        f:close()
+        if data and #data > 0 then
+          local ok1, fileData = pcall(love.filesystem.newFileData, data, "card.png")
+          if ok1 and fileData then
+            local ok2, img = pcall(love.graphics.newImage, fileData)
+            if ok2 and img then
+              img:setFilter("nearest", "nearest")
+              CARD_IMAGES[key] = img
+              return img
+            end
+          end
+        end
+      end
+    end
+  end
+
+  -- 2. Try love.filesystem.getInfo + newImage
+  if love and love.filesystem and love.graphics and love.graphics.newImage then
+    for _, path in ipairs(candidates) do
+      if love.filesystem.getInfo and love.filesystem.getInfo(path) then
+        local ok, img = pcall(love.graphics.newImage, path)
+        if ok and img then
+          img:setFilter("nearest", "nearest")
+          CARD_IMAGES[key] = img
+          return img
+        end
+      end
+    end
+  end
+
+  CARD_IMAGES[key] = false
+  return false
+end
+
+function View.drawCard(card, x, y, hidden, emphasis)
+  local w, h = 18, 26
+  if emphasis then
+    color(C.goldBright, 0.90); rect("fill", x - 1, y - 1, w + 2, h + 2)
+    color(C.goldDark); rect("line", x - 1, y - 1, w + 2, h + 2)
+  end
+
+  -- Card Drop Shadow & Backing
+  color(C.ink, 0.60); rect("fill", x + 1, y + 1, w, h)
+  color(C.ink); rect("fill", x, y, w, h)
+  color(C.paper); rect("fill", x + 1, y + 1, w - 2, h - 2)
 
   if hidden then
-    color(C.gold); rect("line", x + 3, y + 3, 14, 23)
-    color(C.backLight)
-    for py = y + 5, y + 21, 4 do
-      for px = x + 5, x + 13, 4 do
+    color(C.cardBack); rect("fill", x + 1, y + 1, w - 2, h - 2)
+    color(C.brass); rect("line", x + 2, y + 2, w - 4, h - 4)
+    color(C.cardBackLight)
+    for py = y + 4, y + h - 5, 4 do
+      for px = x + 4, x + w - 5, 4 do
         rect("fill", px + ((py / 4) % 2), py, 2, 2)
       end
     end
-    color(C.gold); rect("fill", x + 8, y + 12, 4, 5)
-    color(C.back); rect("fill", x + 9, y + 13, 2, 3)
+    color(C.brass); rect("fill", x + 7, y + 10, 4, 6)
+    color(C.cardBackDark); rect("fill", x + 8, y + 11, 2, 4)
     return
   end
 
-  local ink = (card.suit == "H" or card.suit == "D") and C.red or C.black
+  local ink = (card.suit == "H" or card.suit == "D" or card.suit == "hearts" or card.suit == "diamonds") and C.red or C.black
   glyph(card.rank, x + 2, y + 2, ink)
   pip(card.suit, x + 2, y + 8, ink)
   local numeric = tonumber(card.rank)
   if numeric then
     for _, pt in ipairs(PIPS[numeric] or {}) do pip(card.suit, x + pt[1] - 1, y + pt[2], ink) end
-  elseif card.rank == "A" then
+  elseif card.rank == "A" or card.rank == "a" then
     suit(card.suit, x + 7, y + 10, ink, 2)
   else
-    -- A crisp court-card monogram reads much better than a tiny pseudo-face.
     color(C.gold); rect("fill", x + 6, y + 8, 8, 2); rect("fill", x + 7, y + 7, 1, 1)
     rect("fill", x + 10, y + 6, 1, 2); rect("fill", x + 13, y + 7, 1, 1)
     color(C.paperShade); rect("fill", x + 5, y + 10, 10, 12)

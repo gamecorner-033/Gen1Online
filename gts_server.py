@@ -282,12 +282,12 @@ def eval_5_card_hand(cards):
 
 def evaluate_best_7_hand(seven_cards):
     import itertools
-    best_score = (-1, [])
+    best_score = None
     best_name = "HIGH CARD"
     for combo in itertools.combinations(seven_cards, 5):
         score_cat, score_tb, name = eval_5_card_hand(list(combo))
         score_tuple = (score_cat, score_tb)
-        if score_tuple > best_score:
+        if best_score is None or score_tuple > best_score:
             best_score = score_tuple
             best_name = name
     return best_score, best_name
@@ -612,90 +612,81 @@ class HoldemTable:
                     else:
                         self.process_action(curr_p.trainer_id, "fold")
 
-    def get_client_state(self, trainer_id):
+    def get_client_state(self, client_trainer_id):
         self.tick()
-        now = time.time()
-        caller_p = self.get_player(trainer_id)
-        if caller_p:
-            caller_p.last_seen = now
+        client_p = self.get_player(client_trainer_id)
+        if client_p:
+            client_p.last_seen = time.time()
 
-        seats = []
+        seats_data = []
         for i, p in enumerate(self.players):
-            reveal_cards = (self.state in ("showdown", "payout")) or (p.trainer_id == str(trainer_id))
-            seats.append({
-                "seatIndex": i,
+            s_dict = {
+                "seatIdx": i,
                 "trainerId": p.trainer_id,
                 "name": p.name,
                 "chips": p.chips,
                 "currentBet": p.current_bet,
                 "folded": p.folded,
-                "acted": p.acted,
                 "allIn": p.all_in,
                 "isDealer": (i == self.dealer_idx),
                 "isTurn": (i == self.active_turn_idx and self.state not in ("waiting", "showdown", "payout")),
                 "lastAction": p.last_action,
-                "cards": p.hole_cards if reveal_cards else []
-            })
+                "cards": p.hole_cards if (self.state in ("showdown", "payout") or p.trainer_id == str(client_trainer_id)) else []
+            }
+            seats_data.append(s_dict)
 
         my_turn = False
         allowed_actions = []
         call_amount = 0
-        min_raise_amount = 0
+        min_raise = self.current_bet + self.min_raise
+        my_hand_name = ""
 
-        if caller_p and not caller_p.folded and not caller_p.all_in:
-            if 0 <= self.active_turn_idx < len(self.players):
-                if self.players[self.active_turn_idx].trainer_id == str(trainer_id):
-                    my_turn = True
-                    call_needed = self.current_bet - caller_p.current_bet
-                    call_amount = min(caller_p.chips, call_needed)
-                    min_raise_amount = min(caller_p.chips, self.current_bet + self.min_raise)
-                    allowed_actions.append("fold")
-                    if call_needed == 0:
-                        allowed_actions.append("check")
-                        if caller_p.chips > 0:
-                            allowed_actions.append("bet")
-                    else:
-                        allowed_actions.append("call")
-                        if caller_p.chips > call_needed:
-                            allowed_actions.append("raise")
+        if client_p and not client_p.folded and self.state not in ("waiting", "showdown", "payout"):
+            if 0 <= self.active_turn_idx < len(self.players) and self.players[self.active_turn_idx] == client_p:
+                my_turn = True
+                call_needed = self.current_bet - client_p.current_bet
+                call_amount = min(client_p.chips, call_needed)
+                if call_needed == 0:
+                    allowed_actions = ["check", "bet", "fold"]
+                else:
+                    allowed_actions = ["call", "raise", "fold"]
 
-        time_left = max(0, int(self.turn_timeout_seconds - (now - self.turn_start_time)))
+            if client_p.hole_cards:
+                all_known = client_p.hole_cards + self.community_cards
+                if len(all_known) >= 5:
+                    _, my_hand_name = evaluate_best_7_hand(all_known)
+                else:
+                    my_hand_name = "HOLDEM HAND"
 
-        my_evaluated_name = ""
-        if caller_p and caller_p.hole_cards:
-            seven = caller_p.hole_cards + self.community_cards
-            if len(seven) >= 5:
-                _, my_evaluated_name = evaluate_best_7_hand(seven)
+        time_left = max(0, int(self.turn_timeout_seconds - (time.time() - self.turn_start_time)))
 
         return {
-            "success": True,
             "tableId": self.table_id,
             "tableName": self.name,
             "minBet": self.min_bet,
             "state": self.state,
             "pot": self.pot,
             "currentBet": self.current_bet,
-            "dealerIndex": self.dealer_idx,
-            "activeTurnIndex": self.active_turn_idx,
-            "timeRemaining": time_left,
             "communityCards": self.community_cards,
-            "seats": seats,
-            "myCards": caller_p.hole_cards if caller_p else [],
+            "seats": seats_data,
+            "myCards": client_p.hole_cards if client_p else [],
+            "myChips": client_p.chips if client_p else 0,
             "myTurn": my_turn,
             "allowedActions": allowed_actions,
             "callAmount": call_amount,
-            "minRaiseAmount": min_raise_amount,
+            "minRaise": min_raise,
+            "myHandName": my_hand_name,
             "lastActionText": self.last_action_text,
-            "winners": self.winners,
-            "myHandName": my_evaluated_name
+            "timeRemaining": time_left,
+            "winners": self.winners
         }
 
-# Global Table Instances
-GLOBAL_HOLDEM_TABLES = {
-    "table_10": HoldemTable("table_10", "ROOKIE LOUNGE (10)", 10),
-    "table_50": HoldemTable("table_50", "CASINO LOUNGE (50)", 50),
-    "table_100": HoldemTable("table_100", "HIGH ROLLER (100)", 100),
-    "table_500": HoldemTable("table_500", "CHAMPION TABLE (500)", 500)
+# Global Poker Tables
+holdem_tables = {
+    "table_10": HoldemTable("table_10", "Starter Lounge (10c)", 10),
+    "table_50": HoldemTable("table_50", "Celadon High-Roller (50c)", 50),
+    "table_100": HoldemTable("table_100", "Silph Executive (100c)", 100),
+    "table_500": HoldemTable("table_500", "Champion's Table (500c)", 500)
 }
 
 class GTSHandler(http.server.BaseHTTPRequestHandler):
@@ -1158,40 +1149,6 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
             })
 
         # 4. MMO Chat Message Relay
-        elif action == "holdem_join":
-            trainer_id = str(req.get("trainerId"))
-            name = req.get("name", "TRAINER")
-            table_id = req.get("tableId", "table_50")
-            buy_in = int(req.get("buyIn", 50))
-            table = GLOBAL_HOLDEM_TABLES.get(table_id)
-            if not table:
-                self._send_json({"success": False, "error": "TABLE NOT FOUND"}, status=404)
-                return
-            ok, msg = table.join_player(trainer_id, name, buy_in)
-            self._send_json({"success": ok, "message": msg, "state": table.get_client_state(trainer_id)})
-
-        elif action == "holdem_leave":
-            trainer_id = str(req.get("trainerId"))
-            table_id = req.get("tableId", "table_50")
-            table = GLOBAL_HOLDEM_TABLES.get(table_id)
-            if not table:
-                self._send_json({"success": False, "error": "TABLE NOT FOUND"}, status=404)
-                return
-            cashed_chips = table.leave_player(trainer_id)
-            self._send_json({"success": True, "chips": cashed_chips})
-
-        elif action == "holdem_action":
-            trainer_id = str(req.get("trainerId"))
-            table_id = req.get("tableId", "table_50")
-            act = req.get("holdemAction", "check").lower()
-            amt = int(req.get("amount", 0))
-            table = GLOBAL_HOLDEM_TABLES.get(table_id)
-            if not table:
-                self._send_json({"success": False, "error": "TABLE NOT FOUND"}, status=404)
-                return
-            ok, msg = table.process_action(trainer_id, act, amt)
-            self._send_json({"success": ok, "message": msg, "state": table.get_client_state(trainer_id)})
-
         elif action == "send_chat":
             trainer_id = str(req.get("trainerId", "0"))
             name = req.get("name", "TRAINER")
@@ -1495,6 +1452,69 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 self._send_json({"success": True, "flagged_players": audit_report})
             else:
                 self._send_json({"error": "Unknown admin action"}, status=400)
+        # 8. Multi-Player Online Texas Hold'em Engine
+        elif action in ("holdem_tables", "get_holdem_tables"):
+            tables_summary = []
+            for t_id, tab in holdem_tables.items():
+                tables_summary.append({
+                    "id": tab.table_id,
+                    "name": tab.name,
+                    "minBet": tab.min_bet,
+                    "buyIn": tab.min_bet * 10,
+                    "playerCount": len(tab.players),
+                    "maxSeats": tab.max_seats,
+                    "state": tab.state,
+                    "pot": tab.pot
+                })
+            self._send_json({"success": True, "tables": tables_summary})
+
+        elif action == "holdem_join":
+            t_id = req.get("tableId", "table_50")
+            trainer_id = str(req.get("trainerId", "0"))
+            trainer_name = req.get("name", "TRAINER")
+            buy_in = int(req.get("buyIn", 500))
+            if t_id not in holdem_tables:
+                self._send_json({"success": False, "error": "Table not found"}, status=404)
+                return
+            tab = holdem_tables[t_id]
+            ok, msg = tab.join_player(trainer_id, trainer_name, buy_in)
+            if ok:
+                st = tab.get_client_state(trainer_id)
+                self._send_json({"success": True, "state": st})
+            else:
+                self._send_json({"success": False, "error": msg}, status=400)
+
+        elif action == "holdem_leave":
+            t_id = req.get("tableId", "table_50")
+            trainer_id = str(req.get("trainerId", "0"))
+            if t_id in holdem_tables:
+                refund = holdem_tables[t_id].leave_player(trainer_id)
+                self._send_json({"success": True, "refund": refund})
+            else:
+                self._send_json({"success": True, "refund": 0})
+
+        elif action == "holdem_state":
+            t_id = req.get("tableId", "table_50")
+            trainer_id = str(req.get("trainerId", "0"))
+            if t_id in holdem_tables:
+                st = holdem_tables[t_id].get_client_state(trainer_id)
+                self._send_json({"success": True, "state": st})
+            else:
+                self._send_json({"success": False, "error": "Table not found"}, status=404)
+
+        elif action == "holdem_action":
+            t_id = req.get("tableId", "table_50")
+            trainer_id = str(req.get("trainerId", "0"))
+            act_type = req.get("actionType", "check")
+            amount = int(req.get("amount", 0))
+            if t_id in holdem_tables:
+                tab = holdem_tables[t_id]
+                ok, msg = tab.process_action(trainer_id, act_type, amount)
+                st = tab.get_client_state(trainer_id)
+                self._send_json({"success": ok, "message": msg, "state": st})
+            else:
+                self._send_json({"success": False, "error": "Table not found"}, status=404)
+
         else:
             self._send_json({"error": "Unknown action"}, status=400)
 
