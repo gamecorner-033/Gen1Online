@@ -1,0 +1,5 @@
+tests/blackjack_mod_test.lua
+tests/blackjack_rules_test.lua
+tests/holdem_rules_test.lua
+tests/pawn_test.lua
+tests/arcade_rules_test.lua

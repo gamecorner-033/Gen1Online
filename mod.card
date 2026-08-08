@@ -1,0 +1,16 @@
+[card]
+id = "gen1online-gamecorner"
+title = "Gen1Online Game Corner"
+version = "0.3.3"
+author = "Antigravity & User"
+category = "CONTENT"
+tags = ["multiplayer", "coop", "online", "pvp", "casino", "holdem", "voxel"]
+description = "Multiplayer online co-op overworld exploration, 24/7 GTS Trading, PVP Battles, Casino Lounge, and Live Multiplayer Online Texas Hold'em."
+
+[features]
+- Real-time overworld co-op movement sync (Human Trainer RED + Follower Pokemon)
+- 24/7 Persistent GTS Server & Global Trading System
+- Real-time Online Texas Hold'em Multiplayer Poker Tables
+- Celadon Game Corner Casino Lounge with Blackjack, Crash, and Tube Flyer
+- Distance-based PVP Link Battles (integrated native LinkBattle engine)
+- 3D Voxel diorama compatibility
