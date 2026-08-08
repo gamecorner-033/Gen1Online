@@ -11,7 +11,9 @@ Features:
 - Multi-threaded ThreadingTCPServer for instant simultaneous multi-player connections
 - Multi-player 16-player overworld position sync API per map instance
 - Real Client IP extraction via Cloudflare `CF-Connecting-IP` header
-- Persistent Trainer Profiles (Trainer Card, Badges, Pokédex count, PvP wins, GTS trades, custom titles)
+- Persistent Trainer Profiles & Dedicated Player Leveling System (1 to 100)
+- Host-Only Persistent Player Backup File (`players_backup.json`) with Anti-Cheat Audit
+- Real-Time Global/Local MMO Chat Relay & Leaderboard Engine
 """
 
 import http.server
@@ -19,24 +21,54 @@ import socketserver
 import json
 import os
 import time
+import math
+import secrets
 
 PORT = int(os.environ.get("PORT", 7779))
 DB_FILE = os.environ.get("GTS_DB_PATH", os.path.join(os.path.dirname(__file__), "gts_database.json"))
+BACKUP_DB_FILE = os.environ.get("GTS_BACKUP_PATH", os.path.join(os.path.dirname(__file__), "players_backup.json"))
 
 LISTING_TTL_SECONDS = 30 * 86400
 CLAIM_TTL_SECONDS = 60 * 86400
 PLAYER_TIMEOUT_SECONDS = 30  # 30s timeout guard for map transitions
 CHALLENGE_TTL_SECONDS = 15   # Challenges expire in 15s so stale challenges never launch on join
 
+# Leveling Curve Constants: starts fast, gradually slows down
+# Total XP for Level 100 is ~199,000 XP
+def calculate_xp_for_level(lvl):
+    if lvl <= 1:
+        return 0
+    return int(50 * ((lvl - 1) ** 1.8))
+
+def calculate_level_from_xp(xp):
+    if xp <= 0:
+        return 1
+    for lvl in range(100, 0, -1):
+        if xp >= calculate_xp_for_level(lvl):
+            return lvl
+    return 1
+
+XP_REWARDS = {
+    "catch": 50,
+    "wild_battle": 15,
+    "trainer_battle": 40,
+    "pvp_win": 100,
+    "pvp_loss": 25,
+    "breeding": 60
+}
+
 db = {
-    "listings": {},          # listingId -> listing object
-    "user_counts": {},       # trainerId -> active deposit count
-    "history": [],           # array of last 50 receipts
-    "claim_boxes": {},       # trainerId -> array of traded mons
-    "profiles": {},          # trainerId -> persistent profile object
-    "active_players": {},    # trainerId -> live position & state object (IN-MEMORY ONLY)
+    "listings": {},           # listingId -> listing object
+    "user_counts": {},        # trainerId -> active deposit count
+    "history": [],            # array of last 50 receipts
+    "claim_boxes": {},        # trainerId -> array of traded mons
+    "profiles": {},           # trainerId -> persistent profile object
+    "accounts": {},           # trainerId -> verified MMO player account object
+    "chat": [],               # last 100 global chat messages
+    "banned_trainers": {},    # trainerId -> { reason, bannedAt }
+    "active_players": {},     # trainerId -> live position & state object (IN-MEMORY ONLY)
     "pending_challenges": {}, # targetTrainerId -> challenge object (fromId, fromName, type, party, seed, roomId)
-    "battle_rooms": {},       # roomId -> { targetTrainerId -> [pending_messages] }
+    "battle_rooms": {},        # roomId -> { targetTrainerId -> [pending_messages] }
     "next_id": 1001
 }
 
@@ -54,6 +86,18 @@ def load_db():
         except Exception as e:
             print(f"[GTS Cloud Server] Error loading database: {e}")
 
+    # Also restore accounts from backup if available
+    if os.path.exists(BACKUP_DB_FILE):
+        try:
+            with open(BACKUP_DB_FILE, "r", encoding="utf-8") as f:
+                backup_data = json.load(f)
+                if "accounts" in backup_data:
+                    for tid, acc in backup_data["accounts"].items():
+                        if tid not in db["accounts"]:
+                            db["accounts"][tid] = acc
+        except Exception as e:
+            print(f"[GTS Cloud Server] Error reading player backup: {e}")
+
 def save_db():
     try:
         save_copy = {k: v for k, v in db.items() if k not in ["active_players", "pending_challenges", "battle_rooms"]}
@@ -61,6 +105,23 @@ def save_db():
             json.dump(save_copy, f, indent=2)
     except Exception as e:
         print(f"[GTS Cloud Server] Error saving database: {e}")
+
+    # Always persist host backup file
+    save_backup()
+
+def save_backup():
+    try:
+        backup_copy = {
+            "timestamp": int(time.time()),
+            "total_players": len(db.get("accounts", {})),
+            "accounts": db.get("accounts", {}),
+            "banned_trainers": db.get("banned_trainers", {}),
+            "history": db.get("history", [])[:50]
+        }
+        with open(BACKUP_DB_FILE, "w", encoding="utf-8") as f:
+            json.dump(backup_copy, f, indent=2)
+    except Exception as e:
+        print(f"[GTS Cloud Server] Error saving host backup: {e}")
 
 def self_clean_db():
     now = int(time.time())
@@ -102,6 +163,10 @@ def self_clean_db():
         if now - cdata.get("timestamp", 0) > CHALLENGE_TTL_SECONDS:
             db["pending_challenges"].pop(tid, None)
 
+    # 5. Trim chat messages to last 100
+    if len(db.get("chat", [])) > 100:
+        db["chat"] = db["chat"][-100:]
+
     if purged_listings > 0 or purged_claims > 0:
         print(f"[Self-Cleansing Engine] Purged {purged_listings} expired listings and {purged_claims} old claims.")
         save_db()
@@ -122,6 +187,30 @@ def check_rate_limit(ip):
         return False
     rate_limits[ip].append(now)
     return True
+
+# Anti-Cheat Audit Engine
+def audit_account_integrity(account):
+    flags = []
+    xp = account.get("xp", 0)
+    level = account.get("level", 1)
+
+    if level < 1 or level > 100:
+        flags.append(f"INVALID_LEVEL_{level}")
+
+    min_xp = calculate_xp_for_level(level)
+    max_xp = calculate_xp_for_level(level + 1) if level < 100 else 10000000
+
+    if xp < min_xp:
+        flags.append(f"XP_UNDERFLOW_{xp}_FOR_LVL_{level}")
+
+    calculated_level = calculate_level_from_xp(xp)
+    if calculated_level != level:
+        flags.append(f"LEVEL_XP_DESYNC_CALC_{calculated_level}_STATED_{level}")
+
+    if xp > 300000:
+        flags.append(f"EXCESSIVE_TOTAL_XP_{xp}")
+
+    return flags
 
 class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
     daemon_threads = True
@@ -178,9 +267,62 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                     if p.startswith("trainerId="):
                         trainer_id = p.split("=")[1]
             profile = db["profiles"].get(str(trainer_id), {})
+            account = db.get("accounts", {}).get(str(trainer_id), {})
+            
+            # Compute composite profile
+            level = account.get("level", profile.get("level", 1))
+            xp = account.get("xp", profile.get("xp", 0))
+            pvp_wins = account.get("pvpWins", profile.get("pvpWins", 0))
+            pvp_losses = account.get("pvpLosses", profile.get("pvpLosses", 0))
+            gts_trades = account.get("gtsTrades", profile.get("gtsTrades", 0))
+            wild_battles = account.get("wildBattles", 0)
+            trainer_battles = account.get("trainerBattles", 0)
+            
+            # Calculate server-wide ranking
+            all_accs = list(db.get("accounts", {}).values())
+            all_accs.sort(key=lambda a: (a.get("level", 1), a.get("xp", 0), a.get("pvpWins", 0), a.get("badges", 0)), reverse=True)
+            server_rank_num = 1
+            for idx, a in enumerate(all_accs, start=1):
+                if str(a.get("trainerId")) == str(trainer_id):
+                    server_rank_num = idx
+                    break
+            
+            def get_rank(lvl, wins):
+                if lvl >= 100: return "POKéMON LEGEND"
+                elif lvl >= 90: return "GRAND MASTER"
+                elif lvl >= 80: return "CHAMPION"
+                elif lvl >= 70: return "ELITE FOUR"
+                elif lvl >= 60: return "VETERAN"
+                elif lvl >= 50: return "MASTER"
+                elif lvl >= 40: return "ACE TRAINER"
+                elif lvl >= 30: return "EXPERT"
+                elif lvl >= 20: return "TRAINER"
+                elif lvl >= 10: return "ROOKIE"
+                else: return "NOVICE"
+                
+            rank = profile.get("rank") or get_rank(level, pvp_wins)
+            merged_profile = {
+                "trainerId": trainer_id,
+                "name": account.get("name", profile.get("name", "TRAINER")),
+                "level": level,
+                "xp": xp,
+                "rank": rank,
+                "serverRank": server_rank_num,
+                "totalPlayers": max(1, len(all_accs)),
+                "title": profile.get("title", "ACE TRAINER"),
+                "badges": account.get("badges", profile.get("badges", 0)),
+                "pokedexCount": account.get("pokedexCount", profile.get("pokedexCount", 0)),
+                "pvpWins": pvp_wins,
+                "pvpLosses": pvp_losses,
+                "wildBattles": wild_battles,
+                "trainerBattles": trainer_battles,
+                "favoriteMon": profile.get("favoriteMon", "PIKACHU"),
+                "gtsTrades": gts_trades
+            }
             self._send_json({
                 "success": True,
-                "profile": profile
+                "profile": merged_profile,
+                "account": account
             })
         elif self.path.startswith("/gts/claims"):
             trainer_id = None
@@ -195,6 +337,45 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 "success": True,
                 "claims": claims,
                 "my_listings": listings
+            })
+        elif self.path.startswith("/player/check_name"):
+            name = ""
+            if "?" in self.path:
+                params = self.path.split("?")[1]
+                for p in params.split("&"):
+                    if p.startswith("name="):
+                        name = p.split("=")[1].strip()
+            name_clean = name.upper()
+            taken = False
+            for acc in db.get("accounts", {}).values():
+                if acc.get("name", "").upper() == name_clean:
+                    taken = True
+                    break
+            self._send_json({
+                "success": True,
+                "name": name,
+                "taken": taken
+            })
+        elif self.path.startswith("/chat/history"):
+            self._send_json({
+                "success": True,
+                "messages": db.get("chat", [])[-50:]
+            })
+        elif self.path.startswith("/mmo/leaderboard"):
+            all_accounts = list(db.get("accounts", {}).values())
+            # Filter out banned accounts
+            valid_accounts = [a for a in all_accounts if not a.get("isBanned", False)]
+            # Sort by Level DESC, then PVP Wins DESC, then Total XP DESC
+            sorted_players = sorted(
+                valid_accounts,
+                key=lambda a: (a.get("level", 1), a.get("pvpWins", 0), a.get("xp", 0)),
+                reverse=True
+            )
+            top_leaderboard = sorted_players[:25]
+            self._send_json({
+                "success": True,
+                "total_players": len(valid_accounts),
+                "leaderboard": top_leaderboard
             })
         else:
             self._send_json({"error": "Endpoint not found"}, status=404)
@@ -219,11 +400,18 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
         # 1. High-Speed In-Memory MMO Overworld Position Sync Endpoint
         if action == "sync_pos":
             trainer_id = str(req.get("trainerId"))
+
+            if trainer_id in db.get("banned_trainers", {}):
+                self._send_json({"success": False, "error": "BANNED"}, status=403)
+                return
+
             map_id = req.get("map")
+            sprite_id = req.get("spriteId", "SPRITE_RED")
 
             player_entry = {
                 "trainerId": trainer_id,
                 "name": req.get("name", "TRAINER"),
+                "spriteId": sprite_id,
                 "map": map_id,
                 "x": req.get("x", 5),
                 "y": req.get("y", 5),
@@ -235,6 +423,7 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 "moving": req.get("moving", False),
                 "species": req.get("species"),
                 "title": req.get("title", "ROOKIE"),
+                "level": req.get("level", 1),
                 "timestamp": now
             }
 
@@ -265,7 +454,159 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 "challenge": challenge
             })
 
-        # 2. Direct Network Challenge Endpoint (PVP Lockstep / Trade / Log Trade)
+        # 2. Player Account Registration & Fresh Profile Creation
+        elif action == "register_player":
+            trainer_id = str(req.get("trainerId"))
+            name = req.get("name", "TRAINER").strip()
+            sprite_id = req.get("spriteId", "SPRITE_RED")
+
+            # Check if name is already registered by another trainerId
+            name_upper = name.upper()
+            for tid, acc in db.get("accounts", {}).items():
+                if tid != trainer_id and acc.get("name", "").upper() == name_upper:
+                    self._send_json({"success": False, "error": "NAME_TAKEN"}, status=409)
+                    return
+
+            # Check if trainer is banned
+            if trainer_id in db.get("banned_trainers", {}):
+                self._send_json({"success": False, "error": "BANNED"}, status=403)
+                return
+
+            # Create or restore account
+            existing_account = db.get("accounts", {}).get(trainer_id)
+            token = req.get("token") or (existing_account.get("token") if existing_account else secrets.token_hex(4).upper())
+
+            account = {
+                "trainerId": trainer_id,
+                "name": name,
+                "spriteId": sprite_id,
+                "level": existing_account.get("level", 1) if existing_account else 1,
+                "xp": existing_account.get("xp", 0) if existing_account else 0,
+                "token": token,
+                "badges": req.get("badges", 0),
+                "pokedexCount": req.get("pokedexCount", 0),
+                "wildBattles": existing_account.get("wildBattles", 0) if existing_account else 0,
+                "trainerBattles": existing_account.get("trainerBattles", 0) if existing_account else 0,
+                "pvpWins": existing_account.get("pvpWins", 0) if existing_account else 0,
+                "pvpLosses": existing_account.get("pvpLosses", 0) if existing_account else 0,
+                "breedingCount": existing_account.get("breedingCount", 0) if existing_account else 0,
+                "title": req.get("title", "ROOKIE"),
+                "favoriteMon": req.get("favoriteMon", "PIKACHU"),
+                "isBanned": False,
+                "createdAt": existing_account.get("createdAt", now) if existing_account else now,
+                "lastSeen": now
+            }
+
+            db["accounts"][trainer_id] = account
+            save_db()
+
+            self._send_json({
+                "success": True,
+                "account": account
+            })
+
+        # 3. Synchronized XP Gain & Leveling Verification
+        elif action == "sync_xp":
+            trainer_id = str(req.get("trainerId"))
+            token = req.get("token")
+            xp_type = req.get("xpType", "wild_battle")
+            delta_xp = XP_REWARDS.get(xp_type, 10)
+
+            account = db.get("accounts", {}).get(trainer_id)
+            if not account:
+                self._send_json({"success": False, "error": "ACCOUNT_NOT_FOUND"}, status=404)
+                return
+
+            if account.get("isBanned", False):
+                self._send_json({"success": False, "error": "BANNED"}, status=403)
+                return
+
+            # Token authentication
+            if token and account.get("token") and token != account.get("token"):
+                self._send_json({"success": False, "error": "INVALID_TOKEN"}, status=401)
+                return
+
+            old_level = account.get("level", 1)
+            current_xp = account.get("xp", 0) + delta_xp
+
+            if xp_type == "wild_battle":
+                account["wildBattles"] = account.get("wildBattles", 0) + 1
+            elif xp_type == "trainer_battle":
+                account["trainerBattles"] = account.get("trainerBattles", 0) + 1
+            elif xp_type == "catch":
+                account["pokedexCount"] = req.get("pokedexCount", account.get("pokedexCount", 0) + 1)
+            elif xp_type == "pvp_win":
+                account["pvpWins"] = account.get("pvpWins", 0) + 1
+            elif xp_type == "pvp_loss":
+                account["pvpLosses"] = account.get("pvpLosses", 0) + 1
+            elif xp_type == "breeding":
+                account["breedingCount"] = account.get("breedingCount", 0) + 1
+
+            new_level = calculate_level_from_xp(current_xp)
+            new_level = min(100, max(1, new_level))
+
+            account["xp"] = current_xp
+            account["level"] = new_level
+            account["lastSeen"] = now
+            if "badges" in req: account["badges"] = req["badges"]
+            if "pokedexCount" in req: account["pokedexCount"] = req["pokedexCount"]
+
+            leveled_up = new_level > old_level
+            if leveled_up:
+                add_receipt(f"{account.get('name', 'TRAINER')} (ID {trainer_id}) LEVELED UP TO LV{new_level}!")
+
+            db["accounts"][trainer_id] = account
+            save_db()
+
+            next_lvl_xp = calculate_xp_for_level(new_level + 1) if new_level < 100 else current_xp
+            cur_lvl_base_xp = calculate_xp_for_level(new_level)
+
+            self._send_json({
+                "success": True,
+                "level": new_level,
+                "xp": current_xp,
+                "leveledUp": leveled_up,
+                "currentLevelBaseXp": cur_lvl_base_xp,
+                "nextLevelXp": next_lvl_xp
+            })
+
+        # 4. MMO Chat Message Relay
+        elif action == "send_chat":
+            trainer_id = str(req.get("trainerId", "0"))
+            name = req.get("name", "TRAINER")
+            text = req.get("text", "").strip()
+            scope = req.get("scope", "global")
+
+            if trainer_id in db.get("banned_trainers", {}):
+                self._send_json({"success": False, "error": "BANNED"}, status=403)
+                return
+
+            if len(text) == 0:
+                self._send_json({"success": False, "error": "EMPTY_MESSAGE"}, status=400)
+                return
+
+            if len(text) > 80:
+                text = text[:80]
+
+            msg_entry = {
+                "id": len(db.get("chat", [])) + 1,
+                "trainerId": trainer_id,
+                "name": name,
+                "text": text,
+                "scope": scope,
+                "time": now
+            }
+
+            db.setdefault("chat", []).append(msg_entry)
+            if len(db["chat"]) > 100:
+                db["chat"] = db["chat"][-100:]
+
+            self._send_json({
+                "success": True,
+                "message": msg_entry
+            })
+
+        # 5. Direct Network Challenge Endpoint (PVP Lockstep / Trade / Log Trade)
         elif action == "send_challenge":
             target_id = str(req.get("targetId"))
             from_id = str(req.get("fromId"))
@@ -294,7 +635,7 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
             db["pending_challenges"].pop(trainer_id, None)
             self._send_json({"success": True})
 
-        # 3. Dedicated Lockstep Multi-Room Battle Messaging API
+        # 6. Dedicated Lockstep Multi-Room Battle Messaging API
         elif action == "send_battle_msg":
             room_id = str(req.get("roomId"))
             target_id = str(req.get("targetId"))
@@ -321,7 +662,6 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 "msgs": pending_msgs
             })
 
-        # NEW: Clear battle room to avoid stale messages
         elif action == "clear_battle_room":
             room_id = str(req.get("roomId"))
             db["battle_rooms"].pop(room_id, None)
@@ -399,78 +739,145 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
             sent_mon = req.get("sentMon")
 
             if list_id not in db["listings"]:
-                self._send_json({"success": False, "error": "LISTING NO LONGER EXISTS"}, status=404)
+                self._send_json({"success": False, "error": "Listing not found"}, status=404)
                 return
 
             listing = db["listings"].pop(list_id)
             seller_id = str(listing["trainerId"])
+            seller_name = listing.get("trainerName", "TRAINER")
+            offered_mon = listing["offeredMon"]
+
             db["user_counts"][seller_id] = max(0, db["user_counts"].get(seller_id, 1) - 1)
 
             if seller_id not in db["claim_boxes"]:
                 db["claim_boxes"][seller_id] = []
 
-            offered = listing["offeredMon"]
-            off_name = offered.get("nickname") or offered.get("species")
-            sent_name = sent_mon.get("nickname") or sent_mon.get("species")
-
             db["claim_boxes"][seller_id].append({
                 "mon": sent_mon,
                 "fromName": buyer_name,
                 "fromId": buyer_id,
-                "originalOffered": off_name,
+                "originalOffered": offered_mon.get("nickname") or offered_mon.get("species"),
                 "timestamp": now
             })
 
-            add_receipt(f"{buyer_name} TRADED {sent_name} TO {listing['trainerName']} FOR {off_name}")
+            off_name = offered_mon.get("nickname") or offered_mon.get("species")
+            sent_name = sent_mon.get("nickname") or sent_mon.get("species")
+            add_receipt(f"{buyer_name} TRADED {sent_name} TO {seller_name} FOR {off_name}")
             save_db()
 
             self._send_json({
                 "success": True,
-                "receivedMon": offered
+                "receivedMon": offered_mon
             })
 
         elif action == "withdraw":
             list_id = req.get("listingId")
             trainer_id = str(req.get("trainerId"))
 
-            if list_id in db["listings"] and str(db["listings"][list_id]["trainerId"]) == trainer_id:
+            if list_id in db["listings"]:
                 listing = db["listings"].pop(list_id)
                 db["user_counts"][trainer_id] = max(0, db["user_counts"].get(trainer_id, 1) - 1)
+                off_name = listing["offeredMon"].get("nickname") or listing["offeredMon"].get("species")
+                add_receipt(f"{listing.get('trainerName', 'TRAINER')} WITHDREW {off_name}")
                 save_db()
-                self._send_json({"success": True, "returnedMon": listing["offeredMon"]})
+                self._send_json({"success": True})
             else:
-                self._send_json({"success": False, "error": "Listing not found or unauthorized"}, status=404)
+                self._send_json({"success": False, "error": "Listing not found"}, status=404)
 
         elif action == "claim":
             trainer_id = str(req.get("trainerId"))
-            claim_idx = req.get("index", 0)
+            idx = int(req.get("index", 0))
 
-            claims = db["claim_boxes"].get(trainer_id, [])
-            if 0 <= claim_idx < len(claims):
-                claimed = claims.pop(claim_idx)
+            if trainer_id in db["claim_boxes"] and idx < len(db["claim_boxes"][trainer_id]):
+                claimed = db["claim_boxes"][trainer_id].pop(idx)
+                c_name = claimed["mon"].get("nickname") or claimed["mon"].get("species")
+                add_receipt(f"TRAINER {trainer_id} CLAIMED {c_name}")
                 save_db()
-                self._send_json({"success": True, "claimedMon": claimed["mon"]})
+                self._send_json({"success": True, "claimed": claimed})
             else:
-                self._send_json({"error": "Claim not found"}, status=404)
+                self._send_json({"success": False, "error": "Claim not found"}, status=404)
+
+        # 7. Host Admin Anti-Cheat & Player Management Actions
+        elif action == "admin_action":
+            admin_op = req.get("adminOp")
+            target_tid = str(req.get("targetId", ""))
+
+            if admin_op == "list_players":
+                accounts_summary = []
+                for tid, acc in db.get("accounts", {}).items():
+                    flags = audit_account_integrity(acc)
+                    accounts_summary.append({
+                        "trainerId": tid,
+                        "name": acc.get("name"),
+                        "level": acc.get("level", 1),
+                        "xp": acc.get("xp", 0),
+                        "spriteId": acc.get("spriteId"),
+                        "pvpWins": acc.get("pvpWins", 0),
+                        "pvpLosses": acc.get("pvpLosses", 0),
+                        "badges": acc.get("badges", 0),
+                        "pokedexCount": acc.get("pokedexCount", 0),
+                        "isBanned": acc.get("isBanned", False),
+                        "antiCheatFlags": flags,
+                        "lastSeen": acc.get("lastSeen", 0)
+                    })
+                self._send_json({"success": True, "players": accounts_summary})
+
+            elif admin_op == "ban_player":
+                if target_tid in db.get("accounts", {}):
+                    db["accounts"][target_tid]["isBanned"] = True
+                    db.setdefault("banned_trainers", {})[target_tid] = {
+                        "reason": req.get("reason", "Admin Ban"),
+                        "bannedAt": now
+                    }
+                    db["active_players"].pop(target_tid, None)
+                    save_db()
+                    self._send_json({"success": True, "message": f"Player {target_tid} banned."})
+                else:
+                    self._send_json({"success": False, "error": "Player not found"}, status=404)
+
+            elif admin_op == "unban_player":
+                if target_tid in db.get("accounts", {}):
+                    db["accounts"][target_tid]["isBanned"] = False
+                db.get("banned_trainers", {}).pop(target_tid, None)
+                save_db()
+                self._send_json({"success": True, "message": f"Player {target_tid} unbanned."})
+
+            elif admin_op == "remove_player":
+                db.get("accounts", {}).pop(target_tid, None)
+                db.get("profiles", {}).pop(target_tid, None)
+                db.get("active_players", {}).pop(target_tid, None)
+                db.get("claim_boxes", {}).pop(target_tid, None)
+                db.get("user_counts", {}).pop(target_tid, None)
+                save_db()
+                self._send_json({"success": True, "message": f"Player {target_tid} deleted from server."})
+
+            elif admin_op == "audit":
+                audit_report = {}
+                for tid, acc in db.get("accounts", {}).items():
+                    flags = audit_account_integrity(acc)
+                    if flags:
+                        audit_report[tid] = {
+                            "name": acc.get("name"),
+                            "level": acc.get("level"),
+                            "xp": acc.get("xp"),
+                            "flags": flags
+                        }
+                self._send_json({"success": True, "flagged_players": audit_report})
+            else:
+                self._send_json({"error": "Unknown admin action"}, status=400)
         else:
             self._send_json({"error": "Unknown action"}, status=400)
 
-def run_server():
-    load_db()
-    self_clean_db()
-    with ThreadedTCPServer(("127.0.0.1", PORT), GTSHandler) as httpd:
-        print(f"======================================================")
-        print(f"  Gen1Online Fast High-Performance Server (Port {PORT})")
-        print(f"  Live Network Challenges: ENABLED (PVP & Link Trade)")
-        print(f"  Guaranteed Challenge Delivery: ENABLED")
-        print(f"  Multi-Room Lockstep Battle System: ENABLED")
-        print(f"  In-Memory Position Sync: ENABLED (<1ms latency)")
-        print(f"======================================================")
-        try:
-            httpd.serve_forever()
-        except KeyboardInterrupt:
-            print("\n[GTS Cloud Server] Shutting down gracefully...")
-            save_db()
-
 if __name__ == "__main__":
-    run_server()
+    load_db()
+    server = ThreadedTCPServer(("0.0.0.0", PORT), GTSHandler)
+    print(f"============================================================")
+    print(f" Gen1Online 24/7 GTS & MMO Server with Leveling & Anti-Cheat")
+    print(f" Port: {PORT} | Cloudflare Ready: YES | Backup: players_backup.json")
+    print(f" Active Accounts: {len(db.get('accounts', {}))}")
+    print(f"============================================================")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        save_db()
+        print("\n[GTS Cloud Server] Server shut down cleanly. Backup saved.")
