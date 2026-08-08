@@ -696,11 +696,16 @@ return function(mod)
     return true
   end
 
-  -- Forced Game Save helper (Routes to save_online.lua when online, else normal local save.lua)
+  -- Forced Game Save helper (Captures live overworld coordinates & routes to save_online.lua or save.lua)
   local function performForcedSave(game)
-    if isGtsServerConnected and game and game.save then
+    if not game or not game.save then return end
+    if game.overworld and game.overworld.captureSave then
+      pcall(function() game.overworld:captureSave(game.save) end)
+    end
+    if isGtsServerConnected then
+      saveOnlineAccount(game.save)
       writeOnlineSave(game.save)
-    elseif game and game.writeSave then
+    elseif game.writeSave then
       pcall(function() game:writeSave() end)
     end
   end
@@ -710,21 +715,27 @@ return function(mod)
     if not save then return end
     save.onlineAccount = save.onlineAccount or {}
     local acc = save.onlineAccount
+    if acc.name and save.player then save.player.name = acc.name end
+    if acc.trainerId and save.player then save.player.id = acc.trainerId end
     mmoLevel = acc.level or 1
     mmoXp = acc.xp or 0
     mmoToken = acc.token or nil
     localSelectedSprite = acc.spriteId or "SPRITE_RED"
     if acc.title then localTrainerTitle = acc.title end
+    if acc.favoriteMon then localFavoriteMon = acc.favoriteMon end
   end
 
   local function saveOnlineAccount(save)
     if not save then return end
     save.onlineAccount = save.onlineAccount or {}
+    save.onlineAccount.trainerId = (save.player and save.player.id) or nil
+    save.onlineAccount.name = (save.player and save.player.name) or "RED"
     save.onlineAccount.level = mmoLevel
     save.onlineAccount.xp = mmoXp
     save.onlineAccount.token = mmoToken
     save.onlineAccount.spriteId = localSelectedSprite
     save.onlineAccount.title = localTrainerTitle
+    save.onlineAccount.favoriteMon = localFavoriteMon
   end
 
   local function syncLocalProfile(game, winDelta)
@@ -1261,20 +1272,24 @@ return function(mod)
 
   -- View Detailed Trainer Card UI Screen with Server Rank, Level & Battle Record
   local function openTrainerCardScreen(game, tid, rawData)
-    local pData = gtsApiGet("/gts/profile?trainerId=" .. tostring(tid), 1.5)
+    local myTid, myName = getTrainerInfo(game.save)
+    local isMe = (not tid) or (tostring(tid) == tostring(myTid))
+    local queryTid = isMe and myTid or tid
+
+    local pData = gtsApiGet("/gts/profile?trainerId=" .. tostring(queryTid), 1.5)
     local profile = (pData and pData.success and pData.profile) or {}
 
-    local name = profile.name or (rawData and rawData.name) or "TRAINER"
-    local level = tonumber(profile.level or (rawData and rawData.level) or mmoLevel or 1)
+    local name = profile.name or (isMe and myName) or (rawData and rawData.name) or "TRAINER"
+    local level = tonumber(profile.level or (isMe and mmoLevel) or (rawData and rawData.level) or 1)
     local pvpWins = tonumber(profile.pvpWins or (rawData and rawData.pvpWins) or 0)
     local pvpLosses = tonumber(profile.pvpLosses or 0)
     local gtsTrades = tonumber(profile.gtsTrades or 0)
     local serverRank = tonumber(profile.serverRank or 1)
     local totalPlayers = tonumber(profile.totalPlayers or 1)
     local rank = profile.rank or getRankTitle(level, pvpWins)
-    local badges = profile.badges or 0
-    local pokedexCount = profile.pokedexCount or 0
-    local favMon = profile.favoriteMon or "PIKACHU"
+    local badges = tonumber(profile.badges or (isMe and getBadgeCount(game.save)) or 0)
+    local pokedexCount = tonumber(profile.pokedexCount or (isMe and getPokedexCount(game.save)) or 0)
+    local favMon = profile.favoriteMon or (isMe and localFavoriteMon) or "PIKACHU"
 
     if #name > 10 then name = name:sub(1, 10) end
     if #rank > 14 then rank = rank:sub(1, 14) end
@@ -1869,6 +1884,13 @@ return function(mod)
               newSave.player = newSave.player or {}
               newSave.player.name = chosenName
               newSave.player.id = tid
+              newSave.player.map = "REDS_HOUSE_2F"
+              newSave.player.x = 3
+              newSave.player.y = 6
+              newSave.player.facing = "up"
+              newSave.player.surfing = false
+              newSave.lastHeal = { map = "PALLET_TOWN", x = 5, y = 6 }
+              newSave.lastOutdoor = { id = "PALLET_TOWN", x = 5, y = 6 }
               newSave.flags = {} -- Clean fresh event flags: Oak will stop you before entering Route 1 tall grass!
               newSave.party = {}
               newSave.badges = {}
@@ -1876,13 +1898,15 @@ return function(mod)
               newSave.money = 3000
               newSave.items = { { item = "POTION", count = 1 } }
               newSave.pcItems = { { item = "POTION", count = 1 } }
-              newSave.map = { id = "REDS_HOUSE_2F", x = 3, y = 6, facing = "up" }
               newSave.onlineAccount = {
+                trainerId = tid,
+                name = chosenName,
                 level = 1,
                 xp = 0,
                 token = acc.token,
                 spriteId = chosenSprite,
-                name = chosenName
+                title = localTrainerTitle,
+                favoriteMon = localFavoriteMon
               }
 
               game.save = newSave
@@ -1893,9 +1917,12 @@ return function(mod)
               -- Apply sprite to local player immediately
               applyPlayerSprite(game, chosenSprite)
 
-              -- Warp/load starting map in Red's bedroom
-              if game.overworld and game.overworld.setMap then
-                pcall(function() game.overworld:setMap("REDS_HOUSE_2F", 3, 6, "up") end)
+              -- Warp/load starting map in Red's bedroom & set Pallet Town as remembered outdoor map
+              if game.overworld then
+                game.overworld.lastOutdoor = { id = "PALLET_TOWN", x = 5, y = 6 }
+                if game.overworld.setMap then
+                  pcall(function() game.overworld:setMap("REDS_HOUSE_2F", 3, 6, "up") end)
+                end
               end
 
               syncLocalProfile(game, 0)
@@ -2121,9 +2148,12 @@ return function(mod)
       applyPlayerSprite(game, localSelectedSprite)
 
       local ow = game.overworld
-      if ow and game.save.map and ow.setMap then
-        local m = game.save.map
-        pcall(function() ow:setMap(m.id or "REDS_HOUSE_2F", m.x or 3, m.y or 6, m.facing or "up") end)
+      if ow and ow.setMap and game.save.player and game.save.player.map then
+        local pMap = game.save.player.map
+        local px = game.save.player.x or 3
+        local py = game.save.player.y or 6
+        local pDir = game.save.player.facing or "up"
+        pcall(function() ow:setMap(pMap, px, py, pDir) end)
       end
 
       local ok = fetchGtsServerSync(tid)
