@@ -172,7 +172,7 @@ return function(mod)
           url = url, method = "POST",
           headers = { ["Content-Type"]="application/json",
                       ["Content-Length"]=tostring(#body),
-                      ["X-Mod-Version"]="0.3.4" },
+                      ["X-Mod-Version"]="0.3.4.1" },
           source = ltn12.source.string(body),
           sink   = ltn12.sink.table(resp_body),
           timeout = 3.5
@@ -262,7 +262,7 @@ return function(mod)
     return false, nil, nil, nil, nil
   end
 
-  local MOD_VERSION = "0.3.4"
+  local MOD_VERSION = "0.3.4.1"
 
   -- Client Game Version (Red/Blue/Yellow) & Recomp Engine Version Detector
   local function getClientVersionInfo()

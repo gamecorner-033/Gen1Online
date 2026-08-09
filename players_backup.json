@@ -1,5 +1,5 @@
 {
-  "timestamp": 1786235540,
+  "timestamp": 1786235794,
   "total_players": 43,
   "accounts": {
     "39106": {
@@ -69,12 +69,12 @@
       "name": "Zefir",
       "spriteId": "SPRITE_COOLTRAINER_M",
       "level": 10,
-      "xp": 2825,
+      "xp": 2905,
       "token": "FDBA840C",
       "badges": 0,
       "pokedexCount": 4,
       "wildBattles": 0,
-      "trainerBattles": 61,
+      "trainerBattles": 63,
       "pvpWins": 0,
       "pvpLosses": 3,
       "breedingCount": 1,
@@ -82,7 +82,7 @@
       "favoriteMon": "PIKACHU",
       "isBanned": false,
       "createdAt": 1786159732,
-      "lastSeen": 1786235396,
+      "lastSeen": 1786235790,
       "blackoutCount": 2
     },
     "38673": {

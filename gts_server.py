@@ -29,7 +29,7 @@ PORT = int(os.environ.get("PORT", 7779))
 DB_FILE = os.environ.get("GTS_DB_PATH", os.path.join(os.path.dirname(__file__), "gts_database.json"))
 BACKUP_DB_FILE = os.environ.get("GTS_BACKUP_PATH", os.path.join(os.path.dirname(__file__), "players_backup.json"))
 
-MOD_VERSION = "0.3.4"
+MOD_VERSION = "0.3.4.1"
 
 LISTING_TTL_SECONDS = 30 * 86400
 CLAIM_TTL_SECONDS = 60 * 86400
