@@ -55,7 +55,12 @@ return function(mod)
   local lastPlayerX = nil
   local lastPlayerY = nil
   local lastPlayerMap = nil
-  local activeBattleAdapter = nil -- Active GtsNetAdapter instance
+  local activeBattleAdapter = nil
+  local activeParty = nil
+  local pendingPartyInvite = nil
+  local lastPartySyncTime = 0
+  local openPartyMainMenu = nil
+ -- Active GtsNetAdapter instance
   local isWaitingForChallenge = false -- Locks player movement while waiting for challenge response
   local challengeWaitTimer = 0
   local lastBattleEndTime = -999 -- Cooldown: ignore challenges for 5s after battle ends
@@ -525,6 +530,59 @@ return function(mod)
         end
 
         if res.success then
+          -- Party invite receiver
+          if res.partyInvite and not pendingPartyInvite and not activeParty then
+            pendingPartyInvite = res.partyInvite
+            local inv = res.partyInvite
+            local tid, tName = getTrainerInfo(game.save)
+            local pMenu = {
+              {
+                label = "ACCEPT PARTY INVITE",
+                onSelect = function()
+                  local aRes = gtsApiPost({
+                    action = "party_accept",
+                    trainerId = tid,
+                    name = tName,
+                    level = mmoLevel or 1,
+                    map = (game.overworld and game.overworld.map and game.overworld.map.id) or "PALLET_TOWN",
+                    x = (game.overworld and game.overworld.player and game.overworld.player.cellX) or 5,
+                    y = (game.overworld and game.overworld.player and game.overworld.player.cellY) or 5,
+                    spriteId = localSelectedSprite
+                  }, 1.5)
+                  if aRes and aRes.success then
+                    activeParty = aRes.party
+                    pendingPartyInvite = nil
+                    game.stack:push(TextBox.new(game, wrapText("JOINED CO-OP PARTY!\nALL XP IS NOW SHARED WITH MEMBERS!")))
+                  else
+                    pendingPartyInvite = nil
+                    game.stack:push(TextBox.new(game, wrapText("COULD NOT JOIN PARTY!")))
+                  end
+                end
+              },
+              {
+                label = "DECLINE",
+                onSelect = function()
+                  gtsApiPost({ action = "party_decline", trainerId = tid }, 1.0)
+                  pendingPartyInvite = nil
+                end
+              }
+            }
+            game.stack:push(TextBox.new(game, wrapText(string.format("%s INVITED YOU TO A CO-OP PARTY!\nACCEPT INVITE?", inv.fromName or "A TRAINER")), function()
+              game.stack:push(Menu.new(game, pMenu, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
+            end))
+          end
+
+          -- Shared Party XP receiver
+          if res.partyXp and #res.partyXp > 0 then
+            for _, xev in ipairs(res.partyXp) do
+              addMmoXp(game, "party_share", xev.xp or 50)
+              game.stack:push(TextBox.new(game, wrapText(string.format("PARTY CO-OP BONUS!\n+%d XP FROM %s!", xev.xp or 50, xev.fromName or "TEAMMATE"))))
+            end
+          end
+
+          if res.party ~= nil then
+            activeParty = res.party
+          end
           -- 1. Route multi-player positions if overworld active
           if res.players and game.overworld then
             syncMultiNetPlayers(game, game.overworld, res.players)
@@ -731,19 +789,25 @@ return function(mod)
     return count
   end
 
-  -- Dual Save State Storage: Dedicated Online MMO Save File
-  local ONLINE_SAVE_FILE = "save_online.lua"
-  local ONLINE_BAK_FILE = "save_online.lua.bak"
-  local ONLINE_TMP_FILE = "save_online.lua.tmp"
+    -- Dual Save State Storage: Dedicated Online MMO Save File (Independent of Local save.lua)
+  local function getOnlineSaveFiles()
+    local gv = "red"
+    local okGv, GvMod = pcall(require, "src.core.GameVersion")
+    if okGv and GvMod and GvMod.get then gv = GvMod.get() or "red" end
+    local suffix = (gv == "blue" and "_blue") or (gv == "yellow" and "_yellow") or ""
+    return "save_online" .. suffix .. ".lua", "save_online" .. suffix .. ".lua.bak", "save_online" .. suffix .. ".lua.tmp"
+  end
+
   local offlineSaveBackup = nil
 
   loadOnlineSave = function()
     local SaveSerializer = require("src.core.SaveSerializer")
     local fs = love.filesystem
     if not fs then return nil end
-    local content = fs.read(ONLINE_SAVE_FILE)
+    local saveFile, bakFile, tmpFile = getOnlineSaveFiles()
+    local content = fs.read(saveFile)
     if not content then
-      content = fs.read(ONLINE_BAK_FILE) or fs.read(ONLINE_TMP_FILE)
+      content = fs.read(bakFile) or fs.read(tmpFile)
     end
     if not content then return nil end
     local ok, data = pcall(SaveSerializer.decode, content)
@@ -758,16 +822,30 @@ return function(mod)
     local SaveSerializer = require("src.core.SaveSerializer")
     local fs = love.filesystem
     if not fs then return false end
+    local saveFile, bakFile, tmpFile = getOnlineSaveFiles()
     local encoded = SaveSerializer.encode(saveTable)
-    if fs.getInfo(ONLINE_SAVE_FILE) then
-      local prev = fs.read(ONLINE_SAVE_FILE)
-      if prev then fs.write(ONLINE_BAK_FILE, prev) end
+    if fs.getInfo(saveFile) then
+      local prev = fs.read(saveFile)
+      if prev then fs.write(bakFile, prev) end
     end
-    fs.write(ONLINE_TMP_FILE, encoded)
-    fs.remove(ONLINE_SAVE_FILE)
-    fs.write(ONLINE_SAVE_FILE, encoded)
-    fs.remove(ONLINE_TMP_FILE)
+    fs.write(tmpFile, encoded)
+    fs.remove(saveFile)
+    fs.write(saveFile, encoded)
+    fs.remove(tmpFile)
     return true
+  end
+
+  -- Global SaveData.save Guard: Intercept all Start Menu and in-game saves while online
+  local SaveDataModule = pcall(require, "src.core.SaveData") and require("src.core.SaveData") or nil
+  if SaveDataModule and SaveDataModule.save then
+    local origSaveDataSave = SaveDataModule.save
+    SaveDataModule.save = function(data, mods)
+      if isGtsServerConnected or (data and data.onlineAccount and data.onlineAccount.token) then
+        saveOnlineAccount(data)
+        return writeOnlineSave(data)
+      end
+      return origSaveDataSave(data, mods)
+    end
   end
 
   -- Forced Game Save helper (Captures live overworld coordinates & routes to save_online.lua or save.lua)
@@ -1060,7 +1138,7 @@ return function(mod)
       clearAllNetPlayers(ow)
     end
 
-    -- 2. Restore local offline save from backup or disk (save.lua)
+        -- 2. Restore local offline save from backup or disk (save.lua)
     local SaveDataModule = pcall(require, "src.core.SaveData") and require("src.core.SaveData") or nil
     local localSave = offlineSaveBackup
     if not localSave and SaveDataModule and SaveDataModule.load then
@@ -1072,9 +1150,9 @@ return function(mod)
       if game.adoptSave then game:adoptSave(game.save) end
       localSelectedSprite = "SPRITE_RED"
       applyPlayerSprite(game, "SPRITE_RED")
-      if ow and game.save.map and ow.setMap then
-        local m = game.save.map
-        pcall(function() ow:setMap(m.id or "PALLET_TOWN", m.x or 3, m.y or 6, m.facing or "down") end)
+      if ow and game.save.player and game.save.player.map and ow.setMap then
+        local p = game.save.player
+        pcall(function() ow:setMap(p.map or "PALLET_TOWN", p.x or 3, p.y or 6, p.facing or "down") end)
       end
     end
 
@@ -1856,10 +1934,24 @@ return function(mod)
     game.stack:push(Menu.new(game, partyItems, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
   end
 
-  -- Main GTS Top-Level Menu (WITH STRICT CONNECTION GUARD)
+  -- Main GTS Top-Level Menu (WITH USER-FRIENDLY AUTO-CONNECT)
   local function openGtsMainMenu(game)
     if not isGtsServerConnected then
-      game.stack:push(TextBox.new(game, "YOU ARE NOT CONNECTED\nTO GTS SERVER!\nSELECT 'CONNECT GTS SERVER' FIRST."))
+      local connectPrompt = {
+        {
+          label = "CONNECT TO GTS",
+          onSelect = function()
+            handleConnectToServer(game)
+          end
+        },
+        {
+          label = "CANCEL",
+          onSelect = function() end
+        }
+      }
+      game.stack:push(TextBox.new(game, wrapText("YOU ARE NOT CONNECTED TO GTS SERVER!\nWOULD YOU LIKE TO CONNECT NOW?"), function()
+        game.stack:push(Menu.new(game, connectPrompt, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
+      end))
       return
     end
 
@@ -2297,12 +2389,194 @@ return function(mod)
     game.stack:push(Menu.new(game, chatOptions, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
   end
 
+  -- =========================================================================
+  -- CO-OP MULTIPLAYER PARTY SYSTEM (Shared Double XP, Party Warp & Status HUD)
+  -- =========================================================================
+
+  openPartyMainMenu = function(game)
+    local trainerId, trainerName = getTrainerInfo(game.save)
+    local curMap = (game.overworld and game.overworld.map and game.overworld.map.id) or "PALLET_TOWN"
+    local px = (game.overworld and game.overworld.player and game.overworld.player.cellX) or 5
+    local py = (game.overworld and game.overworld.player and game.overworld.player.cellY) or 5
+
+    if not activeParty then
+      local soloItems = {
+        {
+          label = "CREATE NEW PARTY",
+          onSelect = function()
+            local res = gtsApiPost({
+              action = "party_create",
+              trainerId = trainerId,
+              name = trainerName,
+              level = mmoLevel or 1,
+              map = curMap,
+              x = px,
+              y = py,
+              spriteId = localSelectedSprite
+            }, 1.5)
+            if res and res.success then
+              activeParty = res.party
+              game.stack:push(TextBox.new(game, wrapText("PARTY CREATED!\nINVITE PLAYERS TO SHARE DOUBLE XP & WARP!"), function()
+                openPartyMainMenu(game)
+              end))
+            else
+              game.stack:push(TextBox.new(game, wrapText("COULD NOT CREATE PARTY!")))
+            end
+          end
+        },
+        {
+          label = "INVITE ONLINE PLAYER",
+          onSelect = function()
+            local pRes = gtsApiGet("/gts/players", 1.5)
+            local players = (pRes and pRes.players) or {}
+            local inviteItems = {}
+            for tid, p in pairs(players) do
+              if tostring(tid) ~= tostring(trainerId) then
+                table.insert(inviteItems, {
+                  label = string.format("%s (LV%d)", p.name or "TRAINER", p.level or 1),
+                  onSelect = function()
+                    local iRes = gtsApiPost({
+                      action = "party_invite",
+                      trainerId = trainerId,
+                      name = trainerName,
+                      targetId = tid,
+                      level = mmoLevel or 1,
+                      map = curMap,
+                      x = px,
+                      y = py,
+                      spriteId = localSelectedSprite
+                    }, 1.5)
+                    if iRes and iRes.success then
+                      game.stack:push(TextBox.new(game, wrapText(string.format("INVITATION SENT TO %s!", p.name or "TRAINER"))))
+                    else
+                      game.stack:push(TextBox.new(game, wrapText("COULD NOT SEND INVITE!")))
+                    end
+                  end
+                })
+              end
+            end
+            if #inviteItems == 0 then
+              game.stack:push(TextBox.new(game, wrapText("NO OTHER PLAYERS CURRENTLY ONLINE.")))
+            else
+              game.stack:push(Menu.new(game, inviteItems, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
+            end
+          end
+        }
+      }
+      game.stack:push(Menu.new(game, soloItems, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
+      return
+    end
+
+    -- In active party
+    local isLeader = (tostring(activeParty.leaderId) == tostring(trainerId))
+    local partyItems = {
+      {
+        label = "PARTY MEMBERS & HUD",
+        onSelect = function()
+          local memberItems = {}
+          for mid, m in pairs(activeParty.members or {}) do
+            local leaderTag = (tostring(mid) == tostring(activeParty.leaderId)) and " (LEADER)" or ""
+            table.insert(memberItems, {
+              label = string.format("%s%s - LV%d", m.name or "TRAINER", leaderTag, m.level or 1),
+              onSelect = function()
+                local statusMsg = string.format("PARTY MEMBER:\nNAME: %s\nLEVEL: %d\nMAP: %s", m.name or "TRAINER", m.level or 1, m.map or "UNKNOWN")
+                game.stack:push(TextBox.new(game, wrapText(statusMsg)))
+              end
+            })
+          end
+          game.stack:push(Menu.new(game, memberItems, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
+        end
+      },
+      {
+        label = "WARP TO PARTY MEMBER",
+        onSelect = function()
+          local warpItems = {}
+          for mid, m in pairs(activeParty.members or {}) do
+            if tostring(mid) ~= tostring(trainerId) then
+              table.insert(warpItems, {
+                label = string.format("WARP TO %s (%s)", m.name or "TRAINER", m.map or "MAP"),
+                onSelect = function()
+                  local wRes = gtsApiPost({ action = "party_warp_target", targetId = mid }, 1.5)
+                  if wRes and wRes.success and game.overworld and game.overworld.setMap then
+                    pcall(function() require("src.core.Sound").play(game.data, "Teleport_Exit1") end)
+                    game.overworld:setMap(wRes.map or "PALLET_TOWN", (wRes.x or 5) + 1, wRes.y or 5, "down")
+                    game.stack:push(TextBox.new(game, wrapText(string.format("WARPED TO %s!", m.name or "TEAMMATE"))))
+                  else
+                    game.stack:push(TextBox.new(game, wrapText("COULD NOT WARP TO MEMBER!")))
+                  end
+                end
+              })
+            end
+          end
+          if #warpItems == 0 then
+            game.stack:push(TextBox.new(game, wrapText("NO OTHER PARTY MEMBERS TO WARP TO.")))
+          else
+            game.stack:push(Menu.new(game, warpItems, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
+          end
+        end
+      },
+      {
+        label = "INVITE PLAYER TO PARTY",
+        onSelect = function()
+          local pRes = gtsApiGet("/gts/players", 1.5)
+          local players = (pRes and pRes.players) or {}
+          local inviteItems = {}
+          for tid, p in pairs(players) do
+            if tostring(tid) ~= tostring(trainerId) and not (activeParty.members and activeParty.members[tostring(tid)]) then
+              table.insert(inviteItems, {
+                label = string.format("%s (LV%d)", p.name or "TRAINER", p.level or 1),
+                onSelect = function()
+                  local iRes = gtsApiPost({
+                    action = "party_invite",
+                    trainerId = trainerId,
+                    name = trainerName,
+                    targetId = tid,
+                    level = mmoLevel or 1,
+                    map = curMap,
+                    x = px,
+                    y = py,
+                    spriteId = localSelectedSprite
+                  }, 1.5)
+                  if iRes and iRes.success then
+                    game.stack:push(TextBox.new(game, wrapText(string.format("INVITATION SENT TO %s!", p.name or "TRAINER"))))
+                  else
+                    game.stack:push(TextBox.new(game, wrapText("COULD NOT SEND INVITE!")))
+                  end
+                end
+              })
+            end
+          end
+          if #inviteItems == 0 then
+            game.stack:push(TextBox.new(game, wrapText("NO OTHER AVAILABLE PLAYERS ONLINE.")))
+          else
+            game.stack:push(Menu.new(game, inviteItems, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
+          end
+        end
+      },
+      {
+        label = isLeader and "DISBAND / LEAVE PARTY" or "LEAVE PARTY",
+        onSelect = function()
+          gtsApiPost({ action = "party_leave", trainerId = trainerId }, 1.5)
+          activeParty = nil
+          game.stack:push(TextBox.new(game, wrapText("LEFT THE PARTY.")))
+        end
+      }
+    }
+    game.stack:push(Menu.new(game, partyItems, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
+  end
+
   -- Online Options Menu (Shown in Start Menu once connected)
   openOnlineOptionsMenu = function(game)
     local trainerId, trainerName = getTrainerInfo(game.save)
     loadOnlineAccount(game.save)
 
     local items = {
+      {
+        label = (activeParty and "CO-OP PARTY (ACTIVE)") or "CO-OP PARTY (CREATE/JOIN)",
+        onSelect = function()
+          openPartyMainMenu(game)
+        end
+      },
       {
         label = "MY TRAINER PROFILE",
         onSelect = function()
@@ -2345,9 +2619,10 @@ return function(mod)
               onSelect = function()
                 local fs = love.filesystem
                 if fs then
-                  pcall(function() fs.remove(ONLINE_SAVE_FILE) end)
-                  pcall(function() fs.remove(ONLINE_BAK_FILE) end)
-                  pcall(function() fs.remove(ONLINE_TMP_FILE) end)
+                  local sf, bf, tf = getOnlineSaveFiles()
+                  pcall(function() fs.remove(sf) end)
+                  pcall(function() fs.remove(bf) end)
+                  pcall(function() fs.remove(tf) end)
                 end
                 openFreshOnlinePlayerMenu(game)
               end
@@ -2369,45 +2644,76 @@ return function(mod)
     game.stack:push(Menu.new(game, items, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
   end
 
-  -- Connect to Server Flow (Dual Save State: Checks save_online.lua vs creating fresh online character)
+    -- Connect to Server Flow (Dual Save State: Checks save_online.lua vs creating fresh online character)
   handleConnectToServer = function(game)
     -- 1. Verify Mod Version Handshake with Server First
     local srvInfo = gtsApiGet("/server/info", 2.0)
     if srvInfo and (srvInfo.modVersion or srvInfo.version) then
       local srvVer = srvInfo.modVersion or srvInfo.version
       if srvVer ~= MOD_VERSION then
-        game.stack:push(TextBox.new(game, wrapText(string.format("VERSION MISMATCH!\nSERVER IS ON V%s\nYOUR MOD IS ON V%s\nPLEASE UPDATE TO PLAY!", srvVer, MOD_VERSION))))
+        local msg = string.format("VERSION MISMATCH!\nSERVER IS ON V%s\nYOUR MOD IS ON V%s\nPLEASE UPDATE TO PLAY!", srvVer, MOD_VERSION)
+        game.stack:push(TextBox.new(game, wrapText(msg)))
         return
       end
     end
 
-    -- 2. Backup the local offline save in memory
+    -- 2. Backup the local offline save in memory and capture exact offline coordinates
     if game and game.save and not isGtsServerConnected then
-      offlineSaveBackup = game.save
+      if game.overworld and game.overworld.player and game.overworld.map then
+        local p = game.overworld.player
+        game.save.player = game.save.player or {}
+        game.save.player.map = game.overworld.map.id
+        game.save.player.x = p.cellX
+        game.save.player.y = p.cellY
+        game.save.player.facing = p.facing
+      end
+      local SaveSerializer = require("src.core.SaveSerializer")
+      local ok, encoded = pcall(SaveSerializer.encode, game.save)
+      if ok and encoded then
+        offlineSaveBackup = SaveSerializer.decode(encoded)
+      else
+        offlineSaveBackup = game.save
+      end
     end
 
     -- 3. Check if a dedicated online save (save_online.lua) exists on disk
     local onlineSave = loadOnlineSave()
     if onlineSave and onlineSave.onlineAccount and onlineSave.onlineAccount.token and onlineSave.onlineAccount.name then
+      local pMap = (onlineSave.player and onlineSave.player.map) or (onlineSave.map and onlineSave.map.id) or "PALLET_TOWN"
+      local px = (onlineSave.player and onlineSave.player.x) or (onlineSave.map and onlineSave.map.x) or 3
+      local py = (onlineSave.player and onlineSave.player.y) or (onlineSave.map and onlineSave.map.y) or 6
+      local pDir = (onlineSave.player and onlineSave.player.facing) or (onlineSave.map and onlineSave.map.facing) or "up"
+
       game.save = onlineSave
+      game.save.player = game.save.player or {}
+      game.save.player.map = pMap
+      game.save.player.x = px
+      game.save.player.y = py
+      game.save.player.facing = pDir
+
       if game.adoptSave then game:adoptSave(game.save) end
 
       local acc = game.save.onlineAccount
       local tid, currentName = getTrainerInfo(game.save)
       loadOnlineAccount(game.save)
       isGtsServerConnected = true
-      performForcedSave(game)
+
+      -- WARP / SET MAP to exact online coordinates FIRST!
+      local ow = game.overworld
+      if ow and ow.setMap then
+        pcall(function() ow:setMap(pMap, px, py, pDir) end)
+        if ow.player then
+          ow.player.cellX = px
+          ow.player.cellY = py
+          ow.player.px = px * 16
+          ow.player.py = py * 16
+          ow.player.facing = pDir
+        end
+      end
+
       syncLocalProfile(game, 0)
       applyPlayerSprite(game, localSelectedSprite)
-
-      local ow = game.overworld
-      if ow and ow.setMap and game.save.player and game.save.player.map then
-        local pMap = game.save.player.map
-        local px = game.save.player.x or 3
-        local py = game.save.player.y or 6
-        local pDir = game.save.player.facing or "up"
-        pcall(function() ow:setMap(pMap, px, py, pDir) end)
-      end
+      writeOnlineSave(game.save)
 
       local ok = fetchGtsServerSync(tid)
       if ok and ow and ow.player and ow.map and netOutChannel then
@@ -2440,7 +2746,8 @@ return function(mod)
             species = followerSpecies
           })
         })
-        game.stack:push(TextBox.new(game, wrapText(string.format("CONNECTED TO SERVER!\nONLINE SAVE: %s", acc.name or currentName)), function()
+        local connMsg = string.format("CONNECTED TO SERVER!\nONLINE SAVE: %s", acc.name or currentName)
+        game.stack:push(TextBox.new(game, wrapText(connMsg), function()
           openOnlineOptionsMenu(game)
         end))
       else
@@ -2457,9 +2764,21 @@ return function(mod)
     local list = nextFn and nextFn(game, items) or items
     if not list or type(list) ~= "table" then list = items end
 
-    local hasAccount = game.save and game.save.onlineAccount and game.save.onlineAccount.token
+        local hasAccount = game.save and game.save.onlineAccount and game.save.onlineAccount.token
     local isConnected = isGtsServerConnected and hasAccount
     local menuLabel = isConnected and "ONLINE OPTIONS" or "CONNECT TO SERVER"
+
+    -- Remove manual SAVE from Start Menu when online (Everything is auto-persisted)
+    if isConnected then
+      local filtered = {}
+      for _, item in ipairs(list) do
+        local lbl = tostring(item and item.label or ""):upper()
+        if not lbl:find("SAVE") or lbl:find("OPTION") or lbl:find("RESET") then
+          table.insert(filtered, item)
+        end
+      end
+      list = filtered
+    end
 
     local curLvl = mmoLevel or 1
     local curXp = mmoXp or 0
@@ -2516,6 +2835,24 @@ return function(mod)
       table.insert(list, newItem)
       table.insert(list, versionItem)
     end
+    return list
+  end)
+
+  -- Hook PC Menu (Adds GTS to Pokemon Center & Bedroom PC menus)
+  mod.hooks:wrap("ui.pc.items", function(nextFn, game, items)
+    local list = nextFn and nextFn(game, items) or items
+    if not list or type(list) ~= "table" then list = items end
+
+    local gtsItem = {
+      label = "GTS",
+      keepOpen = true,
+      onSelect = function()
+        pcall(function() require("src.core.Sound").play(game.data, "Enter_PC") end)
+        openGtsMainMenu(game)
+      end
+    }
+
+    table.insert(list, gtsItem)
     return list
   end)
 
@@ -2659,6 +2996,13 @@ return function(mod)
     clearAllNetPlayers(self)
     local res = origSetMap(self, mapId, cellX, cellY, facing)
     lastPlayerMap = mapId
+    if isGtsServerConnected and Game and Game.save and Game.save.player then
+      Game.save.player.map = mapId
+      Game.save.player.x = cellX or Game.save.player.x or 3
+      Game.save.player.y = cellY or Game.save.player.y or 6
+      Game.save.player.facing = facing or Game.save.player.facing or "down"
+      writeOnlineSave(Game.save)
+    end
     return res
   end
 
@@ -2775,6 +3119,17 @@ return function(mod)
         lastPlayerX = p.cellX
         lastPlayerY = p.cellY
         lastPlayerMap = ow.map.id
+
+        if Game and Game.save and Game.save.player then
+          Game.save.player.map = ow.map.id
+          Game.save.player.x = p.cellX
+          Game.save.player.y = p.cellY
+          Game.save.player.facing = p.facing
+        end
+
+        if positionChanged then
+          writeOnlineSave(Game.save)
+        end
 
         local trainerId, trainerName = getTrainerInfo(Game.save)
         local followerSpecies = Game.save.party and Game.save.party[1] and Game.save.party[1].species

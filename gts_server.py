@@ -72,6 +72,11 @@ db = {
     "active_players": {},     # trainerId -> live position & state object (IN-MEMORY ONLY)
     "pending_challenges": {}, # targetTrainerId -> challenge object (fromId, fromName, type, party, seed, roomId)
     "battle_rooms": {},        # roomId -> { targetTrainerId -> [pending_messages] }
+    "parties": {},             # partyId -> { leaderId, leaderName, members: { tid: { name, level, map, x, y, spriteId, lastSeen } }, created }
+    "player_parties": {},      # trainerId -> partyId
+    "pending_party_invites": {}, # targetTrainerId -> { fromId, fromName, partyId, timestamp }
+    "party_messages": {},      # partyId -> [ { fromId, fromName, text, timestamp } ]
+    "party_xp_events": {},     # trainerId -> [ { fromName, xp, reason, timestamp } ]
     "next_id": 1001
 }
 
@@ -1118,10 +1123,30 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 db["pending_challenges"].pop(trainer_id, None)
                 challenge = None
 
+            
+            # Check for Party Invites & Party Shared XP
+            party_invite = db.get("pending_party_invites", {}).get(trainer_id)
+            if party_invite and (now - party_invite.get("timestamp", 0) > 30):
+                db.get("pending_party_invites", {}).pop(trainer_id, None)
+                party_invite = None
+
+            party_xp_list = db.get("party_xp_events", {}).pop(trainer_id, [])
+            party_id = db.get("player_parties", {}).get(trainer_id)
+            party_info = db.get("parties", {}).get(party_id) if party_id else None
+            if party_info and trainer_id in party_info.get("members", {}):
+                party_info["members"][trainer_id]["map"] = map_id
+                party_info["members"][trainer_id]["x"] = req.get("x", 5)
+                party_info["members"][trainer_id]["y"] = req.get("y", 5)
+                party_info["members"][trainer_id]["level"] = req.get("level", 1)
+                party_info["members"][trainer_id]["lastSeen"] = now
+
             self._send_json({
                 "success": True,
                 "players": map_players,
-                "challenge": challenge
+                "challenge": challenge,
+                "partyInvite": party_invite,
+                "partyXp": party_xp_list,
+                "party": party_info
             })
 
         # 2. Player Account Registration & Fresh Profile Creation
@@ -1583,6 +1608,172 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 self._send_json({"success": True, "flagged_players": audit_report})
             else:
                 self._send_json({"error": "Unknown admin action"}, status=400)
+        
+        # 9. Co-op Multiplayer Party System
+        elif action == "party_create":
+            trainer_id = str(req.get("trainerId", "0"))
+            trainer_name = censor_profanity(req.get("name", "TRAINER"))
+            level = int(req.get("level", 1))
+            map_id = req.get("map", "PALLET_TOWN")
+            x = req.get("x", 5)
+            y = req.get("y", 5)
+            sprite_id = req.get("spriteId", "SPRITE_RED")
+            
+            # Leave existing party if in one
+            old_p_id = db["player_parties"].get(trainer_id)
+            if old_p_id and old_p_id in db["parties"]:
+                db["parties"][old_p_id]["members"].pop(trainer_id, None)
+                if len(db["parties"][old_p_id]["members"]) == 0:
+                    db["parties"].pop(old_p_id, None)
+
+            party_id = f"party_{int(time.time())}_{trainer_id}"
+            db["parties"][party_id] = {
+                "id": party_id,
+                "leaderId": trainer_id,
+                "leaderName": trainer_name,
+                "created": int(time.time()),
+                "members": {
+                    trainer_id: {
+                        "trainerId": trainer_id,
+                        "name": trainer_name,
+                        "level": level,
+                        "map": map_id,
+                        "x": x,
+                        "y": y,
+                        "spriteId": sprite_id,
+                        "lastSeen": int(time.time())
+                    }
+                }
+            }
+            db["player_parties"][trainer_id] = party_id
+            self._send_json({"success": True, "partyId": party_id, "party": db["parties"][party_id]})
+
+        elif action == "party_invite":
+            trainer_id = str(req.get("trainerId", "0"))
+            trainer_name = censor_profanity(req.get("name", "TRAINER"))
+            target_id = str(req.get("targetId", ""))
+            
+            party_id = db["player_parties"].get(trainer_id)
+            if not party_id or party_id not in db["parties"]:
+                # Auto-create party if not in one
+                party_id = f"party_{int(time.time())}_{trainer_id}"
+                db["parties"][party_id] = {
+                    "id": party_id,
+                    "leaderId": trainer_id,
+                    "leaderName": trainer_name,
+                    "created": int(time.time()),
+                    "members": {
+                        trainer_id: {
+                            "trainerId": trainer_id,
+                            "name": trainer_name,
+                            "level": int(req.get("level", 1)),
+                            "map": req.get("map", "PALLET_TOWN"),
+                            "x": req.get("x", 5),
+                            "y": req.get("y", 5),
+                            "spriteId": req.get("spriteId", "SPRITE_RED"),
+                            "lastSeen": int(time.time())
+                        }
+                    }
+                }
+                db["player_parties"][trainer_id] = party_id
+
+            if len(db["parties"][party_id]["members"]) >= 4:
+                self._send_json({"success": False, "error": "PARTY IS FULL (MAX 4)!"}, status=400)
+                return
+
+            db["pending_party_invites"][target_id] = {
+                "fromId": trainer_id,
+                "fromName": trainer_name,
+                "partyId": party_id,
+                "timestamp": int(time.time())
+            }
+            self._send_json({"success": True, "message": f"INVITED TO PARTY!"})
+
+        elif action == "party_accept":
+            trainer_id = str(req.get("trainerId", "0"))
+            trainer_name = censor_profanity(req.get("name", "TRAINER"))
+            invite = db["pending_party_invites"].pop(trainer_id, None)
+            if not invite or (int(time.time()) - invite.get("timestamp", 0) > 30):
+                self._send_json({"success": False, "error": "INVITE EXPIRED!"}, status=400)
+                return
+            
+            party_id = invite["partyId"]
+            if party_id not in db["parties"] or len(db["parties"][party_id]["members"]) >= 4:
+                self._send_json({"success": False, "error": "PARTY NO LONGER AVAILABLE!"}, status=400)
+                return
+
+            db["parties"][party_id]["members"][trainer_id] = {
+                "trainerId": trainer_id,
+                "name": trainer_name,
+                "level": int(req.get("level", 1)),
+                "map": req.get("map", "PALLET_TOWN"),
+                "x": req.get("x", 5),
+                "y": req.get("y", 5),
+                "spriteId": req.get("spriteId", "SPRITE_RED"),
+                "lastSeen": int(time.time())
+            }
+            db["player_parties"][trainer_id] = party_id
+            self._send_json({"success": True, "partyId": party_id, "party": db["parties"][party_id]})
+
+        elif action == "party_decline":
+            trainer_id = str(req.get("trainerId", "0"))
+            db["pending_party_invites"].pop(trainer_id, None)
+            self._send_json({"success": True})
+
+        elif action == "party_leave":
+            trainer_id = str(req.get("trainerId", "0"))
+            party_id = db["player_parties"].pop(trainer_id, None)
+            if party_id and party_id in db["parties"]:
+                db["parties"][party_id]["members"].pop(trainer_id, None)
+                if len(db["parties"][party_id]["members"]) == 0:
+                    db["parties"].pop(party_id, None)
+                elif db["parties"][party_id]["leaderId"] == trainer_id:
+                    # Pass leadership to next member
+                    next_leader = next(iter(db["parties"][party_id]["members"].keys()))
+                    db["parties"][party_id]["leaderId"] = next_leader
+                    db["parties"][party_id]["leaderName"] = db["parties"][party_id]["members"][next_leader]["name"]
+            self._send_json({"success": True})
+
+        elif action == "party_info":
+            trainer_id = str(req.get("trainerId", "0"))
+            party_id = db["player_parties"].get(trainer_id)
+            if not party_id or party_id not in db["parties"]:
+                self._send_json({"success": True, "party": None})
+                return
+            self._send_json({"success": True, "party": db["parties"][party_id]})
+
+        elif action == "party_share_xp":
+            trainer_id = str(req.get("trainerId", "0"))
+            trainer_name = censor_profanity(req.get("name", "TRAINER"))
+            xp_amount = int(req.get("xp", 0))
+            reason = req.get("reason", "co-op")
+            party_id = db["player_parties"].get(trainer_id)
+            if party_id and party_id in db["parties"] and xp_amount > 0:
+                for member_id in db["parties"][party_id]["members"]:
+                    if member_id != trainer_id:
+                        if member_id not in db["party_xp_events"]:
+                            db["party_xp_events"][member_id] = []
+                        db["party_xp_events"][member_id].append({
+                            "fromName": trainer_name,
+                            "xp": xp_amount,
+                            "reason": reason,
+                            "timestamp": int(time.time())
+                        })
+            self._send_json({"success": True})
+
+        elif action == "party_warp_target":
+            target_id = str(req.get("targetId", "0"))
+            player_data = db["active_players"].get(target_id)
+            if player_data:
+                self._send_json({
+                    "success": True,
+                    "map": player_data.get("map", "PALLET_TOWN"),
+                    "x": player_data.get("x", 5),
+                    "y": player_data.get("y", 5)
+                })
+            else:
+                self._send_json({"success": False, "error": "MEMBER NOT ACTIVE ON MAP!"}, status=404)
+
         # 8. Multi-Player Online Texas Hold'em Engine
         elif action in ("holdem_tables", "get_holdem_tables"):
             tables_summary = []
