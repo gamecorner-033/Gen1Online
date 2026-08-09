@@ -23,13 +23,14 @@ import os
 import time
 import math
 import secrets
+import random
 import re
 
 PORT = int(os.environ.get("PORT", 7779))
 DB_FILE = os.environ.get("GTS_DB_PATH", os.path.join(os.path.dirname(__file__), "gts_database.json"))
 BACKUP_DB_FILE = os.environ.get("GTS_BACKUP_PATH", os.path.join(os.path.dirname(__file__), "players_backup.json"))
 
-MOD_VERSION = "0.3.4.1"
+MOD_VERSION = "0.3.4.2"
 
 LISTING_TTL_SECONDS = 30 * 86400
 CLAIM_TTL_SECONDS = 60 * 86400
@@ -81,6 +82,13 @@ db = {
 }
 
 rate_limits = {}
+
+def generate_unique_trainer_id():
+    while True:
+        # Generate 6-digit trainer ID (100001 - 999999)
+        new_id = str(random.randint(100001, 999999))
+        if new_id not in db.get("accounts", {}) and new_id not in db.get("profiles", {}):
+            return new_id
 
 def load_db():
     global db
@@ -1151,10 +1159,21 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
 
         # 2. Player Account Registration & Fresh Profile Creation
         elif action == "register_player":
-            trainer_id = str(req.get("trainerId"))
+            is_new = req.get("isNewCharacter", True)
+            raw_tid = req.get("trainerId")
+            raw_tid_str = str(raw_tid).strip() if raw_tid is not None else ""
+            
+            # If isNewCharacter or invalid/empty/unknown ID, generate a brand new unique 6-digit trainerId
+            if is_new or not raw_tid_str or raw_tid_str in ("0", "None") or raw_tid_str not in db.get("accounts", {}):
+                trainer_id = generate_unique_trainer_id()
+                is_fresh_account = True
+            else:
+                trainer_id = raw_tid_str
+                is_fresh_account = False
+
             name = req.get("name", "TRAINER").strip()
             sprite_id = req.get("spriteId", "SPRITE_RED")
-            title = req.get("title", "NOVICE")
+            title = req.get("title", "ROOKIE")
 
             if contains_profanity(name):
                 self._send_json({"success": False, "error": "Name contains inappropriate language"}, status=400)
@@ -1177,36 +1196,71 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 return
 
             # Create or restore account
-            existing_account = db.get("accounts", {}).get(trainer_id)
-            token = req.get("token") or (existing_account.get("token") if existing_account else secrets.token_hex(4).upper())
+            if is_fresh_account:
+                token = secrets.token_hex(4).upper()
+                account = {
+                    "trainerId": trainer_id,
+                    "name": name,
+                    "spriteId": sprite_id,
+                    "level": 1,
+                    "xp": 0,
+                    "token": token,
+                    "badges": 0,
+                    "pokedexCount": 0,
+                    "wildBattles": 0,
+                    "trainerBattles": 0,
+                    "pvpWins": 0,
+                    "pvpLosses": 0,
+                    "breedingCount": 0,
+                    "title": title,
+                    "favoriteMon": req.get("favoriteMon", "PIKACHU"),
+                    "isBanned": False,
+                    "createdAt": now,
+                    "lastSeen": now
+                }
+            else:
+                existing_account = db.get("accounts", {})[trainer_id]
+                token = req.get("token") or existing_account.get("token", secrets.token_hex(4).upper())
+                account = {
+                    "trainerId": trainer_id,
+                    "name": name,
+                    "spriteId": sprite_id,
+                    "level": existing_account.get("level", 1),
+                    "xp": existing_account.get("xp", 0),
+                    "token": token,
+                    "badges": req.get("badges", existing_account.get("badges", 0)),
+                    "pokedexCount": req.get("pokedexCount", existing_account.get("pokedexCount", 0)),
+                    "wildBattles": existing_account.get("wildBattles", 0),
+                    "trainerBattles": existing_account.get("trainerBattles", 0),
+                    "pvpWins": existing_account.get("pvpWins", 0),
+                    "pvpLosses": existing_account.get("pvpLosses", 0),
+                    "breedingCount": existing_account.get("breedingCount", 0),
+                    "title": title,
+                    "favoriteMon": req.get("favoriteMon", existing_account.get("favoriteMon", "PIKACHU")),
+                    "isBanned": existing_account.get("isBanned", False),
+                    "createdAt": existing_account.get("createdAt", now),
+                    "lastSeen": now
+                }
 
-            account = {
+            db["accounts"][trainer_id] = account
+            db["profiles"][trainer_id] = {
                 "trainerId": trainer_id,
                 "name": name,
                 "spriteId": sprite_id,
-                "level": existing_account.get("level", 1) if existing_account else 1,
-                "xp": existing_account.get("xp", 0) if existing_account else 0,
-                "token": token,
-                "badges": req.get("badges", 0),
-                "pokedexCount": req.get("pokedexCount", 0),
-                "wildBattles": existing_account.get("wildBattles", 0) if existing_account else 0,
-                "trainerBattles": existing_account.get("trainerBattles", 0) if existing_account else 0,
-                "pvpWins": existing_account.get("pvpWins", 0) if existing_account else 0,
-                "pvpLosses": existing_account.get("pvpLosses", 0) if existing_account else 0,
-                "breedingCount": existing_account.get("breedingCount", 0) if existing_account else 0,
-                "title": req.get("title", "ROOKIE"),
-                "favoriteMon": req.get("favoriteMon", "PIKACHU"),
-                "isBanned": False,
-                "createdAt": existing_account.get("createdAt", now) if existing_account else now,
+                "title": account.get("title", "ROOKIE"),
+                "level": account.get("level", 1),
+                "xp": account.get("xp", 0),
+                "badges": account.get("badges", 0),
+                "pokedexCount": account.get("pokedexCount", 0),
+                "favoriteMon": account.get("favoriteMon", "PIKACHU"),
                 "lastSeen": now
             }
-
-            db["accounts"][trainer_id] = account
             save_db()
 
             self._send_json({
                 "success": True,
-                "account": account
+                "account": account,
+                "profile": db["profiles"][trainer_id]
             })
 
         # 3. Player Token Redemption & Save Restoration Endpoint

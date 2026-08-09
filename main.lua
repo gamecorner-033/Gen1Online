@@ -172,7 +172,7 @@ return function(mod)
           url = url, method = "POST",
           headers = { ["Content-Type"]="application/json",
                       ["Content-Length"]=tostring(#body),
-                      ["X-Mod-Version"]="0.3.4.1" },
+                      ["X-Mod-Version"]="0.3.4.2" },
           source = ltn12.source.string(body),
           sink   = ltn12.sink.table(resp_body),
           timeout = 3.5
@@ -262,7 +262,7 @@ return function(mod)
     return false, nil, nil, nil, nil
   end
 
-  local MOD_VERSION = "0.3.4.1"
+  local MOD_VERSION = "0.3.4.2"
 
   -- Client Game Version (Red/Blue/Yellow) & Recomp Engine Version Detector
   local function getClientVersionInfo()
@@ -342,14 +342,12 @@ return function(mod)
       if okJson and data then return data end
     end
     return nil
-  end
-
-  -- Text Auto-Wrapping Helper (fits Gen 1 TextBox width of 18 chars)
+  end  -- Text Auto-Wrapping & 2-Line Dialogue Page Break Formatter
   local function wrapText(str, maxLen)
-    maxLen = maxLen or 18
-    if not str or #str <= maxLen then return str or "" end
-    local lines = {}
-    for paragraph in tostring(str):gmatch("[^\r\n]+") do
+    maxLen = maxLen or 17
+    if not str or #str == 0 then return "" end
+    local rawLines = {}
+    for paragraph in tostring(str):gmatch("[^\r\n\f]+") do
       local currentLine = ""
       for word in paragraph:gmatch("%S+") do
         if #currentLine == 0 then
@@ -357,15 +355,26 @@ return function(mod)
         elseif #currentLine + 1 + #word <= maxLen then
           currentLine = currentLine .. " " .. word
         else
-          table.insert(lines, currentLine)
+          table.insert(rawLines, currentLine)
           currentLine = word
         end
       end
       if #currentLine > 0 then
-        table.insert(lines, currentLine)
+        table.insert(rawLines, currentLine)
       end
     end
-    return table.concat(lines, "\n")
+    -- Group every 2 lines into a dialog page separated by \f
+    local pages = {}
+    for i = 1, #rawLines, 2 do
+      local l1 = rawLines[i]
+      local l2 = rawLines[i + 1]
+      if l2 then
+        table.insert(pages, l1 .. "\n" .. l2)
+      else
+        table.insert(pages, l1)
+      end
+    end
+    return table.concat(pages, "\f")
   end
 
   -- Helper to list all Gen 1 Pokémon species sorted alphabetically
@@ -535,9 +544,9 @@ return function(mod)
             pendingPartyInvite = res.partyInvite
             local inv = res.partyInvite
             local tid, tName = getTrainerInfo(game.save)
-            local pMenu = {
+                        local pMenu = {
               {
-                label = "ACCEPT PARTY INVITE",
+                label = "ACCEPT INVITE",
                 onSelect = function()
                   local aRes = gtsApiPost({
                     action = "party_accept",
@@ -567,8 +576,9 @@ return function(mod)
                 end
               }
             }
-            game.stack:push(TextBox.new(game, wrapText(string.format("%s INVITED YOU TO A CO-OP PARTY!\nACCEPT INVITE?", inv.fromName or "A TRAINER")), function()
-              game.stack:push(Menu.new(game, pMenu, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
+            local invMsg = string.format("%s INVITED YOU TO A CO-OP PARTY!\nACCEPT INVITE?", inv.fromName or "A TRAINER")
+            game.stack:push(TextBox.new(game, wrapText(invMsg), function()
+              game.stack:push(Menu.new(game, pMenu, { tx = 0, ty = 0, tw = 20, maxVisible = 6, startCloses = true }))
             end))
           end
 
@@ -1280,7 +1290,7 @@ return function(mod)
                 })
                 pNpc.trainerId = tid
                 pNpc.isCoopPlayer = true
-                pNpc.passable = false
+                pNpc.passable = true
                 pNpc.px = originPx
                 pNpc.py = originPy
                 pNpc.targetPx = targetPx
@@ -1341,7 +1351,7 @@ return function(mod)
                         fNpc.trainerId = tid
                         fNpc.spriteId = spriteId
                         fNpc.isCoopFollower = true
-                        fNpc.passable = false
+                        fNpc.passable = true
                         fNpc.px = fTargetPx
                         fNpc.py = fTargetPy
                         fNpc.targetPx = fTargetPx
@@ -1425,7 +1435,7 @@ return function(mod)
     else return "NOVICE" end
   end
 
-  -- View Detailed Trainer Card UI Screen with Server Rank, Level & Battle Record
+        -- View Detailed Trainer Card UI Screen with Server Rank, Level & Battle Record
   openTrainerCardScreen = function(game, tid, rawData)
     local myTid, myName = getTrainerInfo(game.save)
     local isMe = (not tid) or (tostring(tid) == tostring(myTid))
@@ -1450,72 +1460,71 @@ return function(mod)
     local nextLvlTarget = calculateXpForLevel(level + 1)
     local expNeeded = (level >= 100) and 0 or math.max(0, nextLvlTarget - expVal)
 
-    local blackouts = tonumber(profile.blackouts or profile.blackoutCount or (isMe and game.save and game.save.blackoutCount) or (rawData and rawData.blackouts) or 0)
-
     if #name > 10 then name = name:sub(1, 10) end
-    if #rank > 14 then rank = rank:sub(1, 14) end
+    if #rank > 10 then rank = rank:sub(1, 10) end
     if #favMon > 10 then favMon = favMon:sub(1, 10) end
 
     local container = {
       isOverworld = false,
       update = function(self, dt)
         local input = game.input
-        if input:wasPressed("b") or input:wasPressed("a") then
+        if input:wasPressed("b") or input:wasPressed("a") or input:wasPressed("start") then
           game.stack:pop()
         end
       end,
       draw = function(self)
-        Font.drawBox(1, 0, 18, 17)
-        Font.draw("TRAINER CARD", 24, 8)
-        Font.draw(string.format("NAME: %s", name), 16, 18)
-        Font.draw(string.format("LEVEL: %d/100", level), 16, 28)
-        Font.draw(string.format("EXP: %d (NEXT %d)", expVal, expNeeded), 16, 38)
-        Font.draw(string.format("RANK: %s", rank), 16, 48)
-        Font.draw(string.format("SERVER: #%d/%d", serverRank, totalPlayers), 16, 58)
-        Font.draw(string.format("PVP: %dW / %dL", pvpWins, pvpLosses), 16, 68)
-        Font.draw(string.format("TRADES: %d", gtsTrades), 16, 78)
-        Font.draw(string.format("BADGES: %d/8", badges), 16, 88)
-        Font.draw(string.format("POKEDEX: %d", pokedexCount), 16, 98)
-        Font.draw(string.format("BLACKOUTS: %d", blackouts), 16, 108)
-        Font.draw(string.format("FAV: %s", favMon), 16, 118)
-        Font.draw("PRESS A/B TO CLOSE", 16, 128)
+        Font.drawBox(0, 0, 20, 18)
+        Font.draw("TRAINER CARD", 32, 10)
+        Font.draw("==================", 8, 20)
+        Font.draw(string.format("NAME: %s", name), 12, 30)
+        Font.draw(string.format("LV:%d  ID:%s", level, tostring(queryTid):sub(1,6)), 12, 42)
+        Font.draw(string.format("EXP:%d (%d NEED)", expVal, expNeeded), 12, 54)
+        Font.draw(string.format("TITLE: %s", rank), 12, 66)
+        Font.draw(string.format("RANK: #%d / %d", serverRank, totalPlayers), 12, 78)
+        Font.draw(string.format("PVP: %dW / %dL", pvpWins, pvpLosses), 12, 90)
+        Font.draw(string.format("BADGES:%d/8 DEX:%d", badges, pokedexCount), 12, 102)
+        Font.draw(string.format("FAVORITE: %s", favMon), 12, 114)
+        Font.draw("==================", 8, 122)
+        Font.draw("A/B: CLOSE", 44, 128)
       end
     }
     game.stack:push(container)
   end
 
-  -- View Dedicated Level, Experience Points & Next Level Info Screen
+    -- View Dedicated Level, Experience Points & Next Level Info Screen
   openMmoLevelInfoScreen = function(game)
     local lvl = mmoLevel or 1
     local xp = mmoXp or 0
     local nextLvlXp = calculateXpForLevel(lvl + 1)
     local needed = (lvl >= 100) and 0 or math.max(0, nextLvlXp - xp)
     local trainerId, trainerName = getTrainerInfo(game.save)
+    local tNameShort = (trainerName or "RED"):sub(1, 10)
 
     local container = {
       isOverworld = false,
       update = function(self, dt)
         local input = game.input
-        if input:wasPressed("b") or input:wasPressed("a") then
+        if input:wasPressed("b") or input:wasPressed("a") or input:wasPressed("start") then
           game.stack:pop()
         end
       end,
       draw = function(self)
-        Font.drawBox(1, 0, 18, 17)
-        Font.draw("LEVEL & EXPERIENCE", 16, 10)
-        Font.draw(string.format("PLAYER: %s", (trainerName or "RED"):sub(1, 10)), 16, 24)
-        Font.draw(string.format("CURRENT LVL: %d/100", lvl), 16, 40)
-        Font.draw(string.format("CURRENT EXP: %d", xp), 16, 56)
+        Font.drawBox(0, 0, 20, 18)
+        Font.draw("EXP & LEVEL INFO", 16, 8)
+        Font.draw("==================", 8, 18)
+        Font.draw(string.format("PLAYER: %s", tNameShort), 12, 28)
+        Font.draw(string.format("ID: %s", tostring(trainerId):sub(1, 10)), 12, 40)
+        Font.draw(string.format("LEVEL: %d / 100", lvl), 12, 54)
+        Font.draw(string.format("TOTAL EXP: %d", xp), 12, 68)
         if lvl >= 100 then
-          Font.draw("STATUS: MAX LEVEL!", 16, 76)
-          Font.draw("NEXT LEVEL: NONE", 16, 92)
-          Font.draw("EXP NEEDED: 0", 16, 108)
+          Font.draw("STATUS: MAX LEVEL!", 12, 84)
+          Font.draw("EXP NEEDED: 0", 12, 98)
         else
-          Font.draw(string.format("NEXT LEVEL: LV%d", lvl + 1), 16, 76)
-          Font.draw(string.format("TARGET EXP: %d", nextLvlXp), 16, 92)
-          Font.draw(string.format("EXP NEEDED: %d", needed), 16, 108)
+          Font.draw(string.format("NEXT: LV%d (%d)", lvl + 1, nextLvlXp), 12, 84)
+          Font.draw(string.format("EXP NEED: %d", needed), 12, 98)
         end
-        Font.draw("PRESS A/B TO CLOSE", 16, 126)
+        Font.draw("==================", 8, 114)
+        Font.draw("A/B: CLOSE", 40, 126)
       end
     }
     game.stack:push(container)
@@ -1532,7 +1541,7 @@ return function(mod)
     end
   end
 
-  -- GTS Summary Card & Trade Execution
+    -- GTS Summary Card & Trade Execution
   local function openGtsSummaryCard(game, listing)
     local trainerId, buyerName = getTrainerInfo(game.save)
     local offered = listing.offeredMon
@@ -1577,9 +1586,9 @@ return function(mod)
             local pMon = choice.mon
             local idx = choice.index
             local pName = pMon.nickname or pMon.species
-            if #pName > 8 then pName = pName:sub(1, 8) end
+            if #pName > 7 then pName = pName:sub(1, 7) end
             table.insert(tradeItems, {
-              label = string.format("SEND %s LV%d", pName, pMon.level),
+              label = string.format("GIVE %s (LV%d)", pName, pMon.level),
               onSelect = function()
                 local sentMon = table.remove(game.save.party, idx)
                 local packedSent = Protocol.packMon(sentMon)
@@ -1616,26 +1625,28 @@ return function(mod)
                 pcall(function() Sound.play(game.data, "Trade_Machine") end)
 
                 game.stack:pop()
-                game.stack:push(TextBox.new(game, wrapText(string.format("GTS TRADE DONE! RECEIVED %s!", offName))))
+                local msg = string.format("GTS TRADE DONE! RECEIVED %s!", offName)
+                game.stack:push(TextBox.new(game, wrapText(msg)))
               end
             })
           end
-
-          game.stack:push(Menu.new(game, tradeItems, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
+          table.insert(tradeItems, { label = "BACK", onSelect = function() end })
+          game.stack:push(Menu.new(game, tradeItems, { tx = 0, ty = 0, tw = 20, maxVisible = 7, startCloses = true }))
         end
       end,
       draw = function(self)
-        Font.drawBox(1, 0, 18, 17)
+        Font.drawBox(0, 0, 20, 18)
         Font.draw("GTS LISTING DETAILS", 16, 10)
-        Font.draw(string.format("OFFER: %s", offName), 16, 24)
-        Font.draw(string.format("LEVEL: %d", offered.level or 1), 16, 36)
-        Font.draw(string.format("OT: %s (ID %d)", otName, listing.trainerId or 0), 16, 48)
-        Font.draw("WANTED POKÉMON:", 16, 62)
+        Font.draw("==================", 8, 20)
+        Font.draw(string.format("OFFER: %s", offName), 12, 32)
+        Font.draw(string.format("LEVEL: %d", offered.level or 1), 12, 44)
+        Font.draw(string.format("OT: %s (ID %s)", otName, tostring(listing.trainerId or 0):sub(1,6)), 12, 56)
+        Font.draw("WANTED POKéMON:", 12, 68)
 
         if #wantedList == 0 then
-          Font.draw(" - ANY POKéMON", 16, 74)
+          Font.draw(" - ANY POKéMON", 16, 80)
         else
-          local curY = 74
+          local curY = 80
           for _, wSpec in ipairs(wantedList) do
             local wName = (game.data.pokemon[wSpec] and game.data.pokemon[wSpec].name) or wSpec
             if #wName > 12 then wName = wName:sub(1, 12) end
@@ -1644,7 +1655,8 @@ return function(mod)
           end
         end
 
-        Font.draw("A: TRADE  B: BACK", 16, 124)
+        Font.draw("==================", 8, 114)
+        Font.draw("A: TRADE  B: BACK", 28, 126)
       end
     }
     game.stack:push(container)
@@ -1665,7 +1677,7 @@ return function(mod)
       local offered = listing.offeredMon
       local offName = offered.nickname or (game.data.pokemon[offered.species] and game.data.pokemon[offered.species].name) or offered.species
       local tName = listing.trainerName or "OT"
-      if #offName > 8 then offName = offName:sub(1, 8) end
+      if #offName > 7 then offName = offName:sub(1, 7) end
       if #tName > 5 then tName = tName:sub(1, 5) end
 
       table.insert(items, {
@@ -1681,7 +1693,8 @@ return function(mod)
       return
     end
 
-    local menu = Menu.new(game, items, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true })
+    table.insert(items, { label = "BACK", onSelect = function() end })
+    local menu = Menu.new(game, items, { tx = 0, ty = 0, tw = 20, maxVisible = 7, startCloses = true })
     game.stack:push(menu)
   end
 
@@ -1704,7 +1717,7 @@ return function(mod)
         local offName = offered.nickname or (game.data.pokemon[offered.species] and game.data.pokemon[offered.species].name) or offered.species
         if #offName > 7 then offName = offName:sub(1, 7) end
         table.insert(items, {
-          label = string.format("WITHDRAW %s L%d", offName, offered.level or 1),
+          label = string.format("TAKE %s LV%d", offName, offered.level or 1),
           onSelect = function()
             local returnedMon = Protocol.unpackMon(game.data, offered)
             local added = Party.add(game.save.party, returnedMon)
@@ -1717,7 +1730,8 @@ return function(mod)
             addGtsReceipt(string.format("%s WITHDREW DEPOSITED %s", trainerName, offName))
             performForcedSave(game)
 
-            game.stack:push(TextBox.new(game, wrapText(string.format("WITHDREW %s FROM GTS!", offName))))
+            local msg = string.format("WITHDREW %s FROM GTS!", offName)
+            game.stack:push(TextBox.new(game, wrapText(msg)))
           end
         })
       end
@@ -1732,7 +1746,7 @@ return function(mod)
       if #cName > 7 then cName = cName:sub(1, 7) end
       if #fromStr > 5 then fromStr = fromStr:sub(1, 5) end
       table.insert(items, {
-        label = string.format("CLAIM %s (%s)", cName, fromStr),
+        label = string.format("GET %s (%s)", cName, fromStr),
         onSelect = function()
           local claimedMon = Protocol.unpackMon(game.data, packed)
           local added = Party.add(game.save.party, claimedMon)
@@ -1744,7 +1758,8 @@ return function(mod)
           addGtsReceipt(string.format("%s CLAIMED TRADED %s", trainerName, cName))
           performForcedSave(game)
 
-          game.stack:push(TextBox.new(game, wrapText(string.format("CLAIMED %s FROM GTS!", cName))))
+          local msg = string.format("CLAIMED %s FROM GTS!", cName)
+          game.stack:push(TextBox.new(game, wrapText(msg)))
         end
       })
     end
@@ -1754,7 +1769,8 @@ return function(mod)
       return
     end
 
-    local menu = Menu.new(game, items, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true })
+    table.insert(items, { label = "BACK", onSelect = function() end })
+    local menu = Menu.new(game, items, { tx = 0, ty = 0, tw = 20, maxVisible = 7, startCloses = true })
     game.stack:push(menu)
   end
 
@@ -1771,10 +1787,12 @@ return function(mod)
     local items = {}
     for _, r in ipairs(gtsDb.history) do
       local lbl = r.text
-      if #lbl > 15 then lbl = lbl:sub(1, 15) end
+      if #lbl > 16 then lbl = lbl:sub(1, 16) end
       table.insert(items, {
         label = lbl,
-        onSelect = function() end
+        onSelect = function()
+          game.stack:push(TextBox.new(game, wrapText(r.text)))
+        end
       })
     end
 
@@ -1783,7 +1801,8 @@ return function(mod)
       return
     end
 
-    local menu = Menu.new(game, items, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true })
+    table.insert(items, { label = "BACK", onSelect = function() end })
+    local menu = Menu.new(game, items, { tx = 0, ty = 0, tw = 20, maxVisible = 7, startCloses = true })
     game.stack:push(menu)
   end
 
@@ -1805,7 +1824,7 @@ return function(mod)
 
       if #wanted < 3 then
         table.insert(items, {
-          label = string.format("+ ADD WANTED (%d/3)", #wanted + 1),
+          label = string.format("+ ADD (%d/3)", #wanted + 1),
           onSelect = function()
             local ranges = {
               { label = "A - C", minChar = "A", maxChar = "C" },
@@ -1827,7 +1846,7 @@ return function(mod)
                     local firstLetter = spec.name:sub(1, 1):upper()
                     if firstLetter >= r.minChar and firstLetter <= r.maxChar then
                       table.insert(monItems, {
-                        label = spec.name,
+                        label = spec.name:sub(1, 14),
                         onSelect = function()
                           table.insert(wanted, spec.id)
                           showMainWantedMenu()
@@ -1838,12 +1857,14 @@ return function(mod)
                   if #monItems == 0 then
                     game.stack:push(TextBox.new(game, wrapText("NO POKéMON IN THIS RANGE.")))
                   else
-                    game.stack:push(Menu.new(game, monItems, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
+                    table.insert(monItems, { label = "BACK", onSelect = function() showMainWantedMenu() end })
+                    game.stack:push(Menu.new(game, monItems, { tx = 0, ty = 0, tw = 20, maxVisible = 7, startCloses = true }))
                   end
                 end
               })
             end
-            game.stack:push(Menu.new(game, rangeItems, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
+            table.insert(rangeItems, { label = "BACK", onSelect = function() showMainWantedMenu() end })
+            game.stack:push(Menu.new(game, rangeItems, { tx = 0, ty = 0, tw = 20, maxVisible = 7, startCloses = true }))
           end
         })
       end
@@ -1865,7 +1886,7 @@ return function(mod)
         end
       })
 
-      game.stack:push(Menu.new(game, items, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
+      game.stack:push(Menu.new(game, items, { tx = 0, ty = 0, tw = 20, maxVisible = 7, startCloses = true }))
     end
 
     showMainWantedMenu()
@@ -1895,8 +1916,9 @@ return function(mod)
     local partyItems = {}
     for idx, mon in ipairs(game.save.party) do
       local monName = mon.nickname or (game.data.pokemon[mon.species] and game.data.pokemon[mon.species].name) or mon.species
+      if #monName > 8 then monName = monName:sub(1, 8) end
       table.insert(partyItems, {
-        label = string.format("%s LV%d", monName, mon.level),
+        label = string.format("%s (LV%d)", monName, mon.level),
         onSelect = function()
           local chosenSlot = idx
           local chosenMon = mon
@@ -1925,13 +1947,15 @@ return function(mod)
             gtsDb.user_counts[trainerId] = (gtsDb.user_counts[trainerId] or 0) + 1
             performForcedSave(game)
 
-            game.stack:push(TextBox.new(game, wrapText(string.format("%s WAS DEPOSITED TO GTS!", depositMon.nickname or depositMon.species))))
+            local msg = string.format("%s WAS DEPOSITED TO GTS!", depositMon.nickname or depositMon.species)
+            game.stack:push(TextBox.new(game, wrapText(msg)))
           end)
         end
       })
     end
+    table.insert(partyItems, { label = "BACK", onSelect = function() end })
 
-    game.stack:push(Menu.new(game, partyItems, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
+    game.stack:push(Menu.new(game, partyItems, { tx = 0, ty = 0, tw = 20, maxVisible = 7, startCloses = true }))
   end
 
   -- Main GTS Top-Level Menu (WITH USER-FRIENDLY AUTO-CONNECT)
@@ -1949,8 +1973,9 @@ return function(mod)
           onSelect = function() end
         }
       }
-      game.stack:push(TextBox.new(game, wrapText("YOU ARE NOT CONNECTED TO GTS SERVER!\nWOULD YOU LIKE TO CONNECT NOW?"), function()
-        game.stack:push(Menu.new(game, connectPrompt, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
+      local msg = "YOU ARE NOT CONNECTED TO GTS SERVER!\nWOULD YOU LIKE TO CONNECT NOW?"
+      game.stack:push(TextBox.new(game, wrapText(msg), function()
+        game.stack:push(Menu.new(game, connectPrompt, { tx = 0, ty = 0, tw = 20, maxVisible = 6, startCloses = true }))
       end))
       return
     end
@@ -1964,33 +1989,33 @@ return function(mod)
         onSelect = function() openGtsBrowseMenu(game) end
       },
       {
-        label = "DEPOSIT POKEMON",
+        label = "DEPOSIT MON",
         onSelect = function() openGtsDepositMenu(game) end
       },
       {
-        label = "MY LISTINGS/WITHDRAW",
+        label = "MY LISTINGS",
         onSelect = function() openGtsMyListingsMenu(game) end
       },
       {
-        label = "RECENT HISTORY (50)",
+        label = "RECENT HISTORY",
         onSelect = function() openGtsHistoryMenu(game) end
       },
-      { label = "EXIT", onSelect = function() end }
+      { label = "BACK", onSelect = function() end }
     }
 
-    game.stack:push(Menu.new(game, items, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
+    game.stack:push(Menu.new(game, items, { tx = 0, ty = 0, tw = 20, maxVisible = 7, startCloses = true }))
   end
 
-  -- Customize Local Trainer Profile Submenu
+  -- Customize Local Trainer Profile Submenu ("ONLINE SETTINGS")
   openMyProfileMenu = function(game)
     local titles = {
       "ACE TRAINER", "BUG CATCHER", "POKéMANIAC", "LASS", "YOUNGSTER",
-      "POKéMON CHAMPION", "GYM LEADER", "BLACKBELT", "SUPER NERD", "COOLTRAINER"
+      "CHAMPION", "GYM LEADER", "BLACKBELT", "SUPER NERD", "COOLTRAINER"
     }
 
     local items = {
       {
-        label = "VIEW MY TRAINER CARD",
+        label = "TRAINER CARD",
         onSelect = function()
           syncLocalProfile(game, 0)
           local tid, tName = getTrainerInfo(game.save)
@@ -1998,20 +2023,30 @@ return function(mod)
         end
       },
       {
-        label = "VIEW RECOVERY TOKEN",
+        label = "CHANGE AVATAR",
         onSelect = function()
-          local tokStr = mmoToken or (game.save and game.save.onlineAccount and game.save.onlineAccount.token) or "NONE"
-          game.stack:push(TextBox.new(game, wrapText(string.format("YOUR RECOVERY TOKEN:\n%s\nSAVE THIS TOKEN TO RESTORE ON ANY DEVICE!", tokStr))))
+          local spriteItems = {}
+          for _, av in ipairs(AVAILABLE_AVATARS) do
+            table.insert(spriteItems, {
+              label = av.label,
+              onSelect = function()
+                localSelectedSprite = av.id
+                if game.save and game.save.onlineAccount then
+                  game.save.onlineAccount.spriteId = av.id
+                end
+                applyPlayerSprite(game, av.id)
+                syncLocalProfile(game, 0)
+                local msg = string.format("AVATAR CHANGED TO:\n%s!", av.label)
+                game.stack:push(TextBox.new(game, wrapText(msg)))
+              end
+            })
+          end
+          table.insert(spriteItems, { label = "BACK", onSelect = function() end })
+          game.stack:push(Menu.new(game, spriteItems, { tx = 0, ty = 0, tw = 20, maxVisible = 7, startCloses = true }))
         end
       },
       {
-        label = "REDEEM RECOVERY TOKEN",
-        onSelect = function()
-          openRedeemTokenMenu(game)
-        end
-      },
-      {
-        label = "SELECT TRAINER TITLE",
+        label = "CHANGE TITLE",
         onSelect = function()
           local titleItems = {}
           for _, t in ipairs(titles) do
@@ -2019,38 +2054,64 @@ return function(mod)
               label = t,
               onSelect = function()
                 localTrainerTitle = t
+                if game.save and game.save.onlineAccount then
+                  game.save.onlineAccount.title = t
+                end
                 syncLocalProfile(game, 0)
-                game.stack:push(TextBox.new(game, string.format("TITLE UPDATED TO:\n%s!", t)))
+                local msg = string.format("TITLE UPDATED TO:\n%s!", t)
+                game.stack:push(TextBox.new(game, wrapText(msg)))
               end
             })
           end
-          game.stack:push(Menu.new(game, titleItems, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
+          table.insert(titleItems, { label = "BACK", onSelect = function() end })
+          game.stack:push(Menu.new(game, titleItems, { tx = 0, ty = 0, tw = 20, maxVisible = 7, startCloses = true }))
         end
       },
       {
-        label = "SELECT FAVORITE POKÉMON",
+        label = "FAVORITE MON",
         onSelect = function()
-          if game.save and game.save.party and #game.save.party > 0 then
-            local favItems = {}
-            for _, mon in ipairs(game.save.party) do
-              local mName = mon.nickname or (game.data.pokemon[mon.species] and game.data.pokemon[mon.species].name) or mon.species
-              table.insert(favItems, {
-                label = mName,
-                onSelect = function()
-                  localFavoriteMon = mName
-                  syncLocalProfile(game, 0)
-                  game.stack:push(TextBox.new(game, string.format("FAVORITE POKéMON:\n%s!", mName)))
-                end
-              })
-            end
-            game.stack:push(Menu.new(game, favItems, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
+          if not game.save or not game.save.party or #game.save.party == 0 then
+            game.stack:push(TextBox.new(game, wrapText("YOU HAVE NO POKéMON IN YOUR PARTY!")))
+            return
           end
+          local favItems = {}
+          for _, mon in ipairs(game.save.party) do
+            local mName = mon.nickname or (game.data.pokemon[mon.species] and game.data.pokemon[mon.species].name) or mon.species
+            table.insert(favItems, {
+              label = mName:sub(1, 14),
+              onSelect = function()
+                localFavoriteMon = mName
+                if game.save and game.save.onlineAccount then
+                  game.save.onlineAccount.favoriteMon = mName
+                end
+                syncLocalProfile(game, 0)
+                local msg = string.format("FAVORITE POKéMON SET TO:\n%s!", mName)
+                game.stack:push(TextBox.new(game, wrapText(msg)))
+              end
+            })
+          end
+          table.insert(favItems, { label = "BACK", onSelect = function() end })
+          game.stack:push(Menu.new(game, favItems, { tx = 0, ty = 0, tw = 20, maxVisible = 7, startCloses = true }))
         end
       },
-      { label = "EXIT", onSelect = function() end }
+      {
+        label = "VIEW TOKEN",
+        onSelect = function()
+          local tokStr = mmoToken or (game.save and game.save.onlineAccount and game.save.onlineAccount.token) or "NONE"
+          local msg = string.format("RECOVERY TOKEN:\n%s\nSAVE THIS TOKEN TO RESTORE ON ANY DEVICE!", tokStr)
+          game.stack:push(TextBox.new(game, wrapText(msg)))
+        end
+      },
+      {
+        label = "REDEEM TOKEN",
+        onSelect = function()
+          openRedeemTokenMenu(game)
+        end
+      },
+      { label = "BACK", onSelect = function() end }
     }
 
-    game.stack:push(Menu.new(game, items, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
+    game.stack:push(Menu.new(game, items, { tx = 0, ty = 0, tw = 20, maxVisible = 7, startCloses = true }))
   end
 
   -- Apply custom sprite avatar to local player immediately on overworld
@@ -2142,7 +2203,7 @@ return function(mod)
   end
 
   -- Fresh Online Player Creation & Authentic Naming Screen
-  openFreshOnlinePlayerMenu = function(game)
+    openFreshOnlinePlayerMenu = function(game)
     local NamingScreen = require("src.ui.NamingScreen")
 
     local function pickCharacterSprite(chosenName)
@@ -2152,11 +2213,10 @@ return function(mod)
           label = av.label,
           onSelect = function()
             local chosenSprite = av.id
-            local tid = getTrainerInfo(game.save)
 
             local res = gtsApiPost({
               action = "register_player",
-              trainerId = tid,
+              isNewCharacter = true,
               name = chosenName,
               spriteId = chosenSprite,
               title = localTrainerTitle,
@@ -2166,20 +2226,21 @@ return function(mod)
 
             if res and res.success and res.account then
               local acc = res.account
-              mmoLevel = acc.level or 1
-              mmoXp = acc.xp or 0
+              local newTid = tonumber(acc.trainerId) or 100001
+              mmoLevel = 1
+              mmoXp = 0
               mmoToken = acc.token
               localSelectedSprite = chosenSprite
               isGtsServerConnected = true
 
-              -- Initialize Fresh Player Save via SaveData.newGame (Clean vanilla flags so Oak stops you at Route 1 grass)
+              -- Initialize Fresh Player Save via SaveData.newGame
               local SaveDataModule = pcall(require, "src.core.SaveData") and require("src.core.SaveData") or nil
               local bootCfg = game.bootConfig and game:bootConfig() or nil
               local newSave = (SaveDataModule and SaveDataModule.newGame and SaveDataModule.newGame(bootCfg)) or {}
 
               newSave.player = newSave.player or {}
               newSave.player.name = chosenName
-              newSave.player.id = tid
+              newSave.player.id = newTid
               newSave.player.map = "REDS_HOUSE_2F"
               newSave.player.x = 3
               newSave.player.y = 6
@@ -2195,7 +2256,7 @@ return function(mod)
               newSave.items = { { item = "POTION", count = 1 } }
               newSave.pcItems = { { item = "POTION", count = 1 } }
               newSave.onlineAccount = {
-                trainerId = tid,
+                trainerId = tostring(newTid),
                 name = chosenName,
                 level = 1,
                 xp = 0,
@@ -2222,7 +2283,7 @@ return function(mod)
               end
 
               syncLocalProfile(game, 0)
-              fetchGtsServerSync(tid)
+              fetchGtsServerSync(newTid)
 
               if game.overworld and game.overworld.player and game.overworld.map and netOutChannel then
                 local ow = game.overworld
@@ -2236,7 +2297,9 @@ return function(mod)
                     action = "sync_pos",
                     modVersion = MOD_VERSION,
                     version = MOD_VERSION,
-                    trainerId = tid,
+                    gameVersion = select(1, getClientVersionInfo()),
+                    recompVersion = select(2, getClientVersionInfo()),
+                    trainerId = tostring(newTid),
                     name = chosenName,
                     spriteId = localSelectedSprite,
                     title = localTrainerTitle,
@@ -2255,12 +2318,14 @@ return function(mod)
                 })
               end
 
-              game.stack:push(TextBox.new(game, wrapText(string.format("PLAYER CREATED!\nTOKEN: %s\nWELCOME TO GEN 1 ONLINE!", acc.token or "READY")), function()
+              local createdMsg = string.format("PLAYER CREATED!\nTRAINER ID: %d\nTOKEN: %s\nWELCOME TO GEN 1 ONLINE!", newTid, acc.token or "READY")
+              game.stack:push(TextBox.new(game, wrapText(createdMsg), function()
                 openOnlineOptionsMenu(game)
               end))
             else
-              local err = (res and res.error) or "NAME TAKEN OR SERVER BUSY"
-              game.stack:push(TextBox.new(game, wrapText(string.format("COULD NOT CREATE PLAYER!\n%s", err))))
+              local err = (res and res.error) or "NETWORK_ERROR"
+              local errMsg = string.format("COULD NOT CREATE PLAYER!\n%s", err)
+              game.stack:push(TextBox.new(game, wrapText(errMsg)))
             end
           end
         })
@@ -2389,7 +2454,7 @@ return function(mod)
     game.stack:push(Menu.new(game, chatOptions, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
   end
 
-  -- =========================================================================
+    -- =========================================================================
   -- CO-OP MULTIPLAYER PARTY SYSTEM (Shared Double XP, Party Warp & Status HUD)
   -- =========================================================================
 
@@ -2402,7 +2467,7 @@ return function(mod)
     if not activeParty then
       local soloItems = {
         {
-          label = "CREATE NEW PARTY",
+          label = "CREATE PARTY",
           onSelect = function()
             local res = gtsApiPost({
               action = "party_create",
@@ -2416,7 +2481,8 @@ return function(mod)
             }, 1.5)
             if res and res.success then
               activeParty = res.party
-              game.stack:push(TextBox.new(game, wrapText("PARTY CREATED!\nINVITE PLAYERS TO SHARE DOUBLE XP & WARP!"), function()
+              local msg = "PARTY CREATED!\nINVITE PLAYERS TO SHARE DOUBLE XP & WARP!"
+              game.stack:push(TextBox.new(game, wrapText(msg), function()
                 openPartyMainMenu(game)
               end))
             else
@@ -2425,15 +2491,16 @@ return function(mod)
           end
         },
         {
-          label = "INVITE ONLINE PLAYER",
+          label = "INVITE PLAYER",
           onSelect = function()
             local pRes = gtsApiGet("/gts/players", 1.5)
             local players = (pRes and pRes.players) or {}
             local inviteItems = {}
             for tid, p in pairs(players) do
               if tostring(tid) ~= tostring(trainerId) then
+                local pNameShort = (p.name or "TRAINER"):sub(1, 8)
                 table.insert(inviteItems, {
-                  label = string.format("%s (LV%d)", p.name or "TRAINER", p.level or 1),
+                  label = string.format("%s (LV%d)", pNameShort, p.level or 1),
                   onSelect = function()
                     local iRes = gtsApiPost({
                       action = "party_invite",
@@ -2447,7 +2514,8 @@ return function(mod)
                       spriteId = localSelectedSprite
                     }, 1.5)
                     if iRes and iRes.success then
-                      game.stack:push(TextBox.new(game, wrapText(string.format("INVITATION SENT TO %s!", p.name or "TRAINER"))))
+                      local msg = string.format("INVITATION SENT TO %s!", p.name or "TRAINER")
+                      game.stack:push(TextBox.new(game, wrapText(msg)))
                     else
                       game.stack:push(TextBox.new(game, wrapText("COULD NOT SEND INVITE!")))
                     end
@@ -2458,12 +2526,14 @@ return function(mod)
             if #inviteItems == 0 then
               game.stack:push(TextBox.new(game, wrapText("NO OTHER PLAYERS CURRENTLY ONLINE.")))
             else
-              game.stack:push(Menu.new(game, inviteItems, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
+              table.insert(inviteItems, { label = "BACK", onSelect = function() end })
+              game.stack:push(Menu.new(game, inviteItems, { tx = 0, ty = 0, tw = 20, maxVisible = 7, startCloses = true }))
             end
           end
-        }
+        },
+        { label = "BACK", onSelect = function() end }
       }
-      game.stack:push(Menu.new(game, soloItems, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
+      game.stack:push(Menu.new(game, soloItems, { tx = 0, ty = 0, tw = 20, maxVisible = 7, startCloses = true }))
       return
     end
 
@@ -2471,36 +2541,40 @@ return function(mod)
     local isLeader = (tostring(activeParty.leaderId) == tostring(trainerId))
     local partyItems = {
       {
-        label = "PARTY MEMBERS & HUD",
+        label = "MEMBERS & HUD",
         onSelect = function()
           local memberItems = {}
           for mid, m in pairs(activeParty.members or {}) do
-            local leaderTag = (tostring(mid) == tostring(activeParty.leaderId)) and " (LEADER)" or ""
+            local leaderTag = (tostring(mid) == tostring(activeParty.leaderId)) and "*" or ""
+            local mNameShort = (m.name or "TRAINER"):sub(1, 8)
             table.insert(memberItems, {
-              label = string.format("%s%s - LV%d", m.name or "TRAINER", leaderTag, m.level or 1),
+              label = string.format("%s%s (LV%d)", mNameShort, leaderTag, m.level or 1),
               onSelect = function()
                 local statusMsg = string.format("PARTY MEMBER:\nNAME: %s\nLEVEL: %d\nMAP: %s", m.name or "TRAINER", m.level or 1, m.map or "UNKNOWN")
                 game.stack:push(TextBox.new(game, wrapText(statusMsg)))
               end
             })
           end
-          game.stack:push(Menu.new(game, memberItems, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
+          table.insert(memberItems, { label = "BACK", onSelect = function() end })
+          game.stack:push(Menu.new(game, memberItems, { tx = 0, ty = 0, tw = 20, maxVisible = 7, startCloses = true }))
         end
       },
       {
-        label = "WARP TO PARTY MEMBER",
+        label = "WARP TO MEMBER",
         onSelect = function()
           local warpItems = {}
           for mid, m in pairs(activeParty.members or {}) do
             if tostring(mid) ~= tostring(trainerId) then
+              local mNameShort = (m.name or "TRAINER"):sub(1, 10)
               table.insert(warpItems, {
-                label = string.format("WARP TO %s (%s)", m.name or "TRAINER", m.map or "MAP"),
+                label = string.format("WARP: %s", mNameShort),
                 onSelect = function()
                   local wRes = gtsApiPost({ action = "party_warp_target", targetId = mid }, 1.5)
                   if wRes and wRes.success and game.overworld and game.overworld.setMap then
                     pcall(function() require("src.core.Sound").play(game.data, "Teleport_Exit1") end)
                     game.overworld:setMap(wRes.map or "PALLET_TOWN", (wRes.x or 5) + 1, wRes.y or 5, "down")
-                    game.stack:push(TextBox.new(game, wrapText(string.format("WARPED TO %s!", m.name or "TEAMMATE"))))
+                    local msg = string.format("WARPED TO %s!", m.name or "TEAMMATE")
+                    game.stack:push(TextBox.new(game, wrapText(msg)))
                   else
                     game.stack:push(TextBox.new(game, wrapText("COULD NOT WARP TO MEMBER!")))
                   end
@@ -2511,20 +2585,22 @@ return function(mod)
           if #warpItems == 0 then
             game.stack:push(TextBox.new(game, wrapText("NO OTHER PARTY MEMBERS TO WARP TO.")))
           else
-            game.stack:push(Menu.new(game, warpItems, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
+            table.insert(warpItems, { label = "BACK", onSelect = function() end })
+            game.stack:push(Menu.new(game, warpItems, { tx = 0, ty = 0, tw = 20, maxVisible = 7, startCloses = true }))
           end
         end
       },
       {
-        label = "INVITE PLAYER TO PARTY",
+        label = "INVITE PLAYER",
         onSelect = function()
           local pRes = gtsApiGet("/gts/players", 1.5)
           local players = (pRes and pRes.players) or {}
           local inviteItems = {}
           for tid, p in pairs(players) do
             if tostring(tid) ~= tostring(trainerId) and not (activeParty.members and activeParty.members[tostring(tid)]) then
+              local pNameShort = (p.name or "TRAINER"):sub(1, 8)
               table.insert(inviteItems, {
-                label = string.format("%s (LV%d)", p.name or "TRAINER", p.level or 1),
+                label = string.format("%s (LV%d)", pNameShort, p.level or 1),
                 onSelect = function()
                   local iRes = gtsApiPost({
                     action = "party_invite",
@@ -2538,7 +2614,8 @@ return function(mod)
                     spriteId = localSelectedSprite
                   }, 1.5)
                   if iRes and iRes.success then
-                    game.stack:push(TextBox.new(game, wrapText(string.format("INVITATION SENT TO %s!", p.name or "TRAINER"))))
+                    local msg = string.format("INVITATION SENT TO %s!", p.name or "TRAINER")
+                    game.stack:push(TextBox.new(game, wrapText(msg)))
                   else
                     game.stack:push(TextBox.new(game, wrapText("COULD NOT SEND INVITE!")))
                   end
@@ -2549,49 +2626,52 @@ return function(mod)
           if #inviteItems == 0 then
             game.stack:push(TextBox.new(game, wrapText("NO OTHER AVAILABLE PLAYERS ONLINE.")))
           else
-            game.stack:push(Menu.new(game, inviteItems, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
+            table.insert(inviteItems, { label = "BACK", onSelect = function() end })
+            game.stack:push(Menu.new(game, inviteItems, { tx = 0, ty = 0, tw = 20, maxVisible = 7, startCloses = true }))
           end
         end
       },
       {
-        label = isLeader and "DISBAND / LEAVE PARTY" or "LEAVE PARTY",
+        label = "LEAVE PARTY",
         onSelect = function()
           gtsApiPost({ action = "party_leave", trainerId = trainerId }, 1.5)
           activeParty = nil
           game.stack:push(TextBox.new(game, wrapText("LEFT THE PARTY.")))
         end
-      }
+      },
+      { label = "BACK", onSelect = function() end }
     }
-    game.stack:push(Menu.new(game, partyItems, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
+
+    game.stack:push(Menu.new(game, partyItems, { tx = 0, ty = 0, tw = 20, maxVisible = 7, startCloses = true }))
   end
 
-  -- Online Options Menu (Shown in Start Menu once connected)
+    -- Online Options Menu (Shown in Start Menu once connected)
   openOnlineOptionsMenu = function(game)
     local trainerId, trainerName = getTrainerInfo(game.save)
     loadOnlineAccount(game.save)
 
     local items = {
       {
-        label = (activeParty and "CO-OP PARTY (ACTIVE)") or "CO-OP PARTY (CREATE/JOIN)",
+        label = (activeParty and "PARTY (ACTIVE)") or "CO-OP PARTY",
         onSelect = function()
           openPartyMainMenu(game)
         end
       },
       {
-        label = "MY TRAINER PROFILE",
+        label = "MY PROFILE",
         onSelect = function()
           syncLocalProfile(game, 0)
           openTrainerCardScreen(game, trainerId, { name = trainerName })
         end
       },
       {
-        label = string.format("EXP & LEVEL (LV%d)", mmoLevel or 1),
+        label = string.format("EXP (LV%d)", mmoLevel or 1),
         onSelect = function()
           openMmoLevelInfoScreen(game)
         end
       },
       {
-        label = "GLOBAL MMO CHAT",
+        label = "GLOBAL CHAT",
         onSelect = function() openMmoChatMenu(game) end
       },
       {
@@ -2603,11 +2683,12 @@ return function(mod)
         onSelect = function()
           local srvInfo = gtsApiGet("/server/info", 1.5)
           local srvVer = (srvInfo and (srvInfo.modVersion or srvInfo.version)) or MOD_VERSION
-          game.stack:push(TextBox.new(game, wrapText(string.format("MOD VERSION: V%s\nSERVER VERSION: V%s\nPROTOCOLS SYNCED!", MOD_VERSION, srvVer))))
+          local msg = string.format("MOD VERSION: V%s\nSERVER VERSION: V%s\nPROTOCOLS SYNCED!", MOD_VERSION, srvVer)
+          game.stack:push(TextBox.new(game, wrapText(msg)))
         end
       },
       {
-        label = "RESET / SWITCH SAVE",
+        label = "RESET / SWITCH",
         onSelect = function()
           local confirmMenu = {
             {
@@ -2615,7 +2696,7 @@ return function(mod)
               onSelect = function() end
             },
             {
-              label = "YES, RESET CHARACTER",
+              label = "YES, RESET",
               onSelect = function()
                 local fs = love.filesystem
                 if fs then
@@ -2629,19 +2710,22 @@ return function(mod)
             }
           }
           game.stack:push(TextBox.new(game, wrapText("WARNING: THIS WILL OVERWRITE YOUR ONLINE CHARACTER! LOCAL SAVE IS UNTOUCHED. PROCEED?"), function()
-            game.stack:push(Menu.new(game, confirmMenu, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
+            game.stack:push(Menu.new(game, confirmMenu, { tx = 0, ty = 0, tw = 20, maxVisible = 6, startCloses = true }))
           end))
         end
       },
       {
         label = "DISCONNECT",
         onSelect = function()
-          handleDisconnect(game, "DISCONNECTED FROM SERVER.\nLOCAL SAVE RESTORED.")
+          isGtsServerConnected = false
+          netNpcs = {}
+          netFollowers = {}
+          game.stack:push(TextBox.new(game, wrapText("DISCONNECTED FROM GEN 1 ONLINE SERVER.")))
         end
       }
     }
 
-    game.stack:push(Menu.new(game, items, { tx = 1, ty = 1, tw = 18, maxVisible = 6, startCloses = true }))
+    game.stack:push(Menu.new(game, items, { tx = 0, ty = 0, tw = 20, maxVisible = 7, startCloses = true }))
   end
 
     -- Connect to Server Flow (Dual Save State: Checks save_online.lua vs creating fresh online character)
@@ -2785,27 +2869,27 @@ return function(mod)
     local nextReq = calculateXpForLevel(curLvl + 1)
     local toNext = (curLvl >= 100) and 0 or math.max(0, nextReq - curXp)
 
-    local expItem = {
-      label = string.format("EXP: LV%d (%d)", curLvl, toNext),
+        local expItem = {
+      label = string.format("EXP (LV%d)", curLvl),
       onSelect = function()
         openMmoLevelInfoScreen(game)
       end,
     }
 
-        local versionItem = {
-      label = string.format("MOD: V%s", MOD_VERSION),
+    local versionItem = {
+      label = "VERSION",
       onSelect = function()
         local srvInfo = gtsApiGet("/server/info", 1.5)
         local srvVer = (srvInfo and (srvInfo.modVersion or srvInfo.version)) or "OFFLINE"
-        local statusStr = (srvVer == MOD_VERSION) and "SYNCED (ONLINE)" or (srvVer == "OFFLINE" and "SERVER OFFLINE" or "UPDATE NEEDED")
+        local statusStr = (srvVer == MOD_VERSION) and "SYNCED" or (srvVer == "OFFLINE" and "OFFLINE" or "UPDATE REQ")
         local gName, rVer = getClientVersionInfo()
-        local msg = string.format("GEN 1 ONLINE\nMOD: V%s\nGAME: %s\nRECOMP: %s\nSERVER: V%s (%s)", MOD_VERSION, gName, rVer, srvVer, statusStr)
+        local msg = string.format("GEN 1 ONLINE\nMOD: V%s\nGAME: %s\nRECOMP: %s\nSERVER: V%s\nSTATUS: %s", MOD_VERSION, gName, rVer, srvVer, statusStr)
         game.stack:push(TextBox.new(game, wrapText(msg)))
       end,
     }
 
     local newItem = {
-      label = menuLabel,
+      label = isConnected and "ONLINE" or "CONNECT",
       onSelect = function()
         if isConnected then
           openOnlineOptionsMenu(game)

@@ -86,12 +86,104 @@
         "PIKACHU"
       ],
       "timestamp": 1786229759
+    },
+    "GTS_1088": {
+      "id": "GTS_1088",
+      "trainerId": "45799",
+      "trainerName": "XiON",
+      "offeredMon": {
+        "ot": "XiON",
+        "dvs": {
+          "defense": 14,
+          "special": 0,
+          "speed": 1,
+          "hp": 10,
+          "attack": 7
+        },
+        "otId": 45799,
+        "statExp": {
+          "defense": 0,
+          "special": 0,
+          "speed": 0,
+          "hp": 0,
+          "attack": 0
+        },
+        "level": 3,
+        "moves": [
+          {
+            "pp": 35,
+            "id": "TACKLE"
+          },
+          {
+            "pp": 30,
+            "id": "TAIL_WHIP"
+          }
+        ],
+        "hp": 15,
+        "exp": 27,
+        "species": "RATTATA"
+      },
+      "wanted": [
+        "PIDGEY"
+      ],
+      "timestamp": 1786257883
+    },
+    "GTS_1089": {
+      "id": "GTS_1089",
+      "trainerId": "116972",
+      "trainerName": "BCD",
+      "offeredMon": {
+        "exp": 156340,
+        "dvs": {
+          "speed": 14,
+          "hp": 9,
+          "attack": 5,
+          "defense": 10,
+          "special": 13
+        },
+        "species": "MEWTWO",
+        "statExp": {
+          "speed": 101,
+          "hp": 85,
+          "attack": 94,
+          "defense": 89,
+          "special": 100
+        },
+        "level": 50,
+        "hp": 175,
+        "ot": "BCD",
+        "moves": [
+          {
+            "id": "CONFUSION",
+            "pp": 25
+          },
+          {
+            "id": "DISABLE",
+            "pp": 20
+          },
+          {
+            "id": "SWIFT",
+            "pp": 20
+          },
+          {
+            "id": "PSYCHIC_M",
+            "pp": 9
+          }
+        ],
+        "otId": 116972
+      },
+      "wanted": [
+        "MEW",
+        "ZAPDOS",
+        "ARCANINE"
+      ],
+      "timestamp": 1786287375
     }
   },
   "user_counts": {
     "63884": 0,
     "11531": 0,
-    "45799": 2,
+    "45799": 3,
     "43253": 0,
     "5306": 0,
     "38673": 0,
@@ -103,208 +195,209 @@
     "12607": 0,
     "16743": 0,
     "27963": 0,
-    "49363": 0
+    "49363": 0,
+    "116972": 1
   },
   "history": [
     {
-      "text": "AMUZER (ID 38673) LEVELED UP TO LV7!",
-      "time": 1786235297
+      "text": "LEAN (ID 45799) LEVELED UP TO LV31!",
+      "time": 1786289168
     },
     {
-      "text": "AMUZER (ID 38673) LEVELED UP TO LV6!",
-      "time": 1786234814
+      "text": "Adward (ID 13839) LEVELED UP TO LV15!",
+      "time": 1786289132
     },
     {
-      "text": "CHROX (ID 45799) LEVELED UP TO LV10!",
-      "time": 1786234791
+      "text": "Reen (ID 60358) LEVELED UP TO LV8!",
+      "time": 1786289085
     },
     {
-      "text": "CHROX (ID 45799) LEVELED UP TO LV9!",
-      "time": 1786233505
+      "text": "Adward (ID 13839) LEVELED UP TO LV14!",
+      "time": 1786288190
     },
     {
-      "text": "KOOLKAT (ID 5306) LEVELED UP TO LV10!",
-      "time": 1786233360
+      "text": "Reen (ID 60358) LEVELED UP TO LV7!",
+      "time": 1786288084
     },
     {
-      "text": "KOOLKAT (ID 5306) LEVELED UP TO LV9!",
-      "time": 1786232684
+      "text": "HmnQlus (ID 41058) LEVELED UP TO LV3!",
+      "time": 1786287937
     },
     {
-      "text": "KOOLKAT (ID 5306) LEVELED UP TO LV8!",
-      "time": 1786230330
+      "text": "Reen (ID 60358) LEVELED UP TO LV6!",
+      "time": 1786287691
     },
     {
-      "text": "Jester (ID 22238) LEVELED UP TO LV2!",
-      "time": 1786230011
+      "text": "BCD (ID 116972) DEPOSITED MEWTWO LV50",
+      "time": 1786287375
     },
     {
-      "text": "<PK>BTCH (ID 5306) LEVELED UP TO LV7!",
-      "time": 1786229889
+      "text": "Kurm (ID 30956) LEVELED UP TO LV7!",
+      "time": 1786287311
     },
     {
-      "text": "Ahmed (ID 45799) DEPOSITED LOBEZNO LV5",
-      "time": 1786229759
+      "text": "BCD (ID 116972) LEVELED UP TO LV2!",
+      "time": 1786287296
     },
     {
-      "text": "FLORIO<PK> LINK TRADED NIGGACHU!\u2642 WITH Ahmed",
-      "time": 1786229716
+      "text": "AAAAAAA (ID 49363) LEVELED UP TO LV7!",
+      "time": 1786286937
     },
     {
-      "text": "Ahmed LINK TRADED LOBEZNO WITH FLORIO<PK>",
-      "time": 1786229713
+      "text": "B (ID 30956) LEVELED UP TO LV6!",
+      "time": 1786286638
     },
     {
-      "text": "FLORIO<PK> LINK TRADED NIGGACHU!\u2642 WITH Ahmed",
-      "time": 1786229710
+      "text": "B (ID 30956) LEVELED UP TO LV5!",
+      "time": 1786286141
     },
     {
-      "text": "Ahmed LINK TRADED NIGGA!?- WITH FLORIO<PK>",
-      "time": 1786229709
+      "text": "B (ID 30956) LEVELED UP TO LV4!",
+      "time": 1786285825
     },
     {
-      "text": "Ahmed LINK TRADED LOBEZNO WITH FLORIO<PK>",
-      "time": 1786229696
+      "text": "B (ID 30956) LEVELED UP TO LV3!",
+      "time": 1786285531
     },
     {
-      "text": "FLORIO<PK> LINK TRADED NIGGACHU!\u2642 WITH Ahmed",
-      "time": 1786229695
+      "text": "B (ID 30956) LEVELED UP TO LV2!",
+      "time": 1786285338
     },
     {
-      "text": "MARY (ID 3597) LEVELED UP TO LV3!",
-      "time": 1786229692
+      "text": "AAAAAAA (ID 49363) LEVELED UP TO LV6!",
+      "time": 1786285289
     },
     {
-      "text": "Ahmed LINK TRADED NIGGA!?- WITH FLORIO<PK>",
-      "time": 1786229622
+      "text": "Reen (ID 60358) LEVELED UP TO LV5!",
+      "time": 1786284749
     },
     {
-      "text": "FLORIO<PK> LINK TRADED NIGGACHU!\u2642 WITH Ahmed",
-      "time": 1786229619
+      "text": "Adward (ID 13839) LEVELED UP TO LV13!",
+      "time": 1786284663
     },
     {
-      "text": "Ahmed LINK TRADED LOBEZNO WITH FLORIO<PK>",
-      "time": 1786229615
+      "text": "Reen (ID 60358) LEVELED UP TO LV4!",
+      "time": 1786284496
     },
     {
-      "text": "FLORIO<PK> LINK TRADED NIGGACHU!\u2642 WITH Ahmed",
-      "time": 1786229610
+      "text": "Reen (ID 60358) LEVELED UP TO LV3!",
+      "time": 1786284253
     },
     {
-      "text": "FLORIO<PK> LINK TRADED NIGGACHU!\u2642 WITH Tony<PK>",
-      "time": 1786229595
+      "text": "Reen (ID 60358) LEVELED UP TO LV2!",
+      "time": 1786283787
     },
     {
-      "text": "Tony<PK> LINK TRADED  WITH FLORIO<PK>",
-      "time": 1786229592
+      "text": "OceanFR (ID 45799) LEVELED UP TO LV30!",
+      "time": 1786283364
     },
     {
-      "text": "Ahmed LINK TRADED LOBEZNO WITH FLORIO<PK>",
-      "time": 1786229589
+      "text": "OceanFR (ID 45799) LEVELED UP TO LV29!",
+      "time": 1786282313
     },
     {
-      "text": "FLORIO<PK> LINK TRADED NIGGACHU!\u2642 WITH Ahmed",
-      "time": 1786229588
+      "text": "Sona (ID 23786) LEVELED UP TO LV2!",
+      "time": 1786282000
     },
     {
-      "text": "Tony<PK> LINK TRADED  WITH FLORIO<PK>",
-      "time": 1786229585
+      "text": "Ocean (ID 38673) LEVELED UP TO LV25!",
+      "time": 1786281989
     },
     {
-      "text": "Ahmed LINK TRADED LOBEZNO WITH FLORIO<PK>",
-      "time": 1786229583
+      "text": "Ocean (ID 38673) LEVELED UP TO LV24!",
+      "time": 1786279737
     },
     {
-      "text": "Ahmed LINK TRADED LOBEZNO WITH FLORIO<PK>",
-      "time": 1786229561
+      "text": "Ocean (ID 38673) LEVELED UP TO LV23!",
+      "time": 1786278987
     },
     {
-      "text": "FLORIO<PK> LINK TRADED NIGGACHU!\u2642 WITH Ahmed",
-      "time": 1786229556
+      "text": "<PK><MN>\u2642Dark (ID 45799) LEVELED UP TO LV28!",
+      "time": 1786278700
     },
     {
-      "text": "Skyler TRADED PIKACHU TO Pau FOR HAUNTER",
-      "time": 1786229459
+      "text": "SCROTE? (ID 11531) LEVELED UP TO LV18!",
+      "time": 1786278248
     },
     {
-      "text": "Hobo (ID 9444) LEVELED UP TO LV14!",
-      "time": 1786229449
+      "text": "Ocean (ID 38673) LEVELED UP TO LV22!",
+      "time": 1786277781
     },
     {
-      "text": "KC (ID 27963) LEVELED UP TO LV3!",
-      "time": 1786229397
+      "text": "Ocean (ID 38673) LEVELED UP TO LV21!",
+      "time": 1786276820
     },
     {
-      "text": "KC (ID 27963) LEVELED UP TO LV2!",
-      "time": 1786229343
+      "text": "Ocean (ID 38673) LEVELED UP TO LV20!",
+      "time": 1786275998
     },
     {
-      "text": "<PK>BTCH (ID 5306) LEVELED UP TO LV6!",
-      "time": 1786229212
+      "text": "TEMPO (ID 43253) LEVELED UP TO LV6!",
+      "time": 1786275080
     },
     {
-      "text": "Hobo (ID 9444) LEVELED UP TO LV13!",
-      "time": 1786229003
+      "text": "DD/fra (ID 45799) LEVELED UP TO LV27!",
+      "time": 1786274959
     },
     {
-      "text": "<PK>BTCH (ID 5306) LEVELED UP TO LV5!",
-      "time": 1786228942
+      "text": "TEMPO (ID 43253) LEVELED UP TO LV5!",
+      "time": 1786274936
     },
     {
-      "text": "MARY (ID 3597) LEVELED UP TO LV2!",
-      "time": 1786228851
+      "text": "JJJ (ID 37263) LEVELED UP TO LV2!",
+      "time": 1786274530
     },
     {
-      "text": "BONES (ID 39106) LEVELED UP TO LV6!",
-      "time": 1786228729
+      "text": "LUT I (ID 38673) LEVELED UP TO LV19!",
+      "time": 1786274169
     },
     {
-      "text": "Draco (ID 38673) LEVELED UP TO LV5!",
-      "time": 1786228699
+      "text": "KRAIDEN (ID 49363) LEVELED UP TO LV5!",
+      "time": 1786274038
     },
     {
-      "text": "Hobo (ID 9444) LEVELED UP TO LV12!",
-      "time": 1786228651
+      "text": "SCROTE? (ID 11531) LEVELED UP TO LV17!",
+      "time": 1786273087
     },
     {
-      "text": "Sixhero (ID 45799) LEVELED UP TO LV8!",
-      "time": 1786228515
+      "text": "SCROTE? (ID 11531) LEVELED UP TO LV16!",
+      "time": 1786272528
     },
     {
-      "text": "ZEN (ID 45799) LEVELED UP TO LV7!",
-      "time": 1786228220
+      "text": "KOOLKAT (ID 5306) LEVELED UP TO LV16!",
+      "time": 1786272508
     },
     {
-      "text": "Hobo (ID 9444) LEVELED UP TO LV11!",
-      "time": 1786228091
+      "text": "DD/fra (ID 45799) LEVELED UP TO LV26!",
+      "time": 1786272453
     },
     {
-      "text": "<PK>BTCH (ID 5306) LEVELED UP TO LV4!",
-      "time": 1786228085
+      "text": "BUTRCUP (ID 38673) LEVELED UP TO LV18!",
+      "time": 1786271861
     },
     {
-      "text": "FLORIO<PK> LINK TRADED RINGO<PK><MN> WITH Tony<PK>",
-      "time": 1786228034
+      "text": "SCROTE? (ID 11531) LEVELED UP TO LV15!",
+      "time": 1786271850
     },
     {
-      "text": "Tony<PK> LINK TRADED  WITH FLORIO<PK>",
-      "time": 1786228033
+      "text": "TEEHEE (ID 63884) LEVELED UP TO LV4!",
+      "time": 1786271431
     },
     {
-      "text": "Tony<PK> LINK TRADED  WITH FLORIO<PK>",
-      "time": 1786228025
+      "text": "SCROTE? (ID 11531) LEVELED UP TO LV14!",
+      "time": 1786271202
     },
     {
-      "text": "FLORIO<PK> LINK TRADED LEEDWE WITH Tony<PK>",
-      "time": 1786228024
+      "text": "Cyan (ID 46228) LEVELED UP TO LV14!",
+      "time": 1786271155
     },
     {
-      "text": "ZEN (ID 45799) LEVELED UP TO LV6!",
-      "time": 1786227929
+      "text": "TEEHEE (ID 63884) LEVELED UP TO LV3!",
+      "time": 1786271142
     },
     {
-      "text": "Draco (ID 38673) LEVELED UP TO LV4!",
-      "time": 1786227924
+      "text": "DD (FR) (ID 45799) LEVELED UP TO LV25!",
+      "time": 1786271089
     }
   ],
   "claim_boxes": {
@@ -520,38 +613,38 @@
   "profiles": {
     "63884": {
       "trainerId": "63884",
-      "name": "NIGHT",
+      "name": "ASH",
       "title": "ACE TRAINER",
       "badges": 0,
-      "pokedexCount": 0,
+      "pokedexCount": 36,
       "gtsTrades": 0,
       "pvpWins": 2,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1786228504,
+      "timestamp": 1786288152,
       "blackouts": 0
     },
     "45799": {
       "trainerId": "45799",
-      "name": "OG",
+      "name": "Dennis",
       "title": "ACE TRAINER",
       "badges": 0,
-      "pokedexCount": 4,
+      "pokedexCount": 2,
       "gtsTrades": 0,
       "pvpWins": 2,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1786235791,
-      "blackouts": 2
+      "timestamp": 1786289243,
+      "blackouts": 0
     },
     "38673": {
       "trainerId": "38673",
-      "name": "BTTRCUP",
+      "name": "Chronic",
       "title": "ACE TRAINER",
       "badges": 0,
       "pokedexCount": 1,
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1786235297,
+      "timestamp": 1786289235,
       "blackouts": 0
     },
     "11531": {
@@ -563,19 +656,20 @@
       "gtsTrades": 0,
       "pvpWins": 3,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1786235628,
+      "timestamp": 1786281946,
       "blackouts": 0
     },
     "43253": {
       "trainerId": "43253",
-      "name": "TEMPO",
+      "name": "ASH",
       "title": "ACE TRAINER",
       "badges": 0,
-      "pokedexCount": 0,
+      "pokedexCount": 3,
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1786208072
+      "timestamp": 1786275675,
+      "blackouts": 0
     },
     "60368": {
       "trainerId": "60368",
@@ -590,14 +684,14 @@
     },
     "5306": {
       "trainerId": "5306",
-      "name": "<PK>BTCH",
+      "name": "A",
       "title": "ACE TRAINER",
       "badges": 0,
-      "pokedexCount": 6,
+      "pokedexCount": 2,
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1786233576,
+      "timestamp": 1786274099,
       "blackouts": 0
     },
     "48217": {
@@ -614,14 +708,14 @@
     },
     "22238": {
       "trainerId": "22238",
-      "name": "RED",
+      "name": "<PK><MN>King",
       "title": "ACE TRAINER",
       "badges": 0,
-      "pokedexCount": 1,
+      "pokedexCount": 0,
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1786230140,
+      "timestamp": 1786252920,
       "blackouts": 0
     },
     "34690": {
@@ -637,73 +731,75 @@
     },
     "37692": {
       "trainerId": "37692",
-      "name": "Subaru",
+      "name": "Eris",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 15,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1786258727,
+      "blackouts": 1
+    },
+    "39106": {
+      "trainerId": "39106",
+      "name": "COOLGUY",
       "title": "ACE TRAINER",
       "badges": 0,
       "pokedexCount": 1,
       "gtsTrades": 0,
-      "pvpWins": 0,
-      "favoriteMon": "CHARIZARD",
-      "timestamp": 1786234630,
-      "blackouts": 0
-    },
-    "39106": {
-      "trainerId": "39106",
-      "name": "Jon",
-      "title": "ACE TRAINER",
-      "badges": 0,
-      "pokedexCount": 0,
-      "gtsTrades": 0,
       "pvpWins": 2,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1786235496,
+      "timestamp": 1786287117,
       "blackouts": 0
     },
     "49363": {
       "trainerId": "49363",
-      "name": "BoHamod",
+      "name": "BCFFGHH",
       "title": "ACE TRAINER",
       "badges": 0,
       "pokedexCount": 0,
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1786221163,
-      "blackouts": 1
+      "timestamp": 1786289196,
+      "blackouts": 0
     },
     "20772": {
       "trainerId": "20772",
-      "name": "RED",
+      "name": "KITTY",
       "title": "ACE TRAINER",
       "badges": 0,
       "pokedexCount": 1,
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1786176178
+      "timestamp": 1786274426,
+      "blackouts": 0
     },
     "9444": {
       "trainerId": "9444",
-      "name": "Kristia",
+      "name": "Kurm",
       "title": "ACE TRAINER",
       "badges": 0,
-      "pokedexCount": 22,
+      "pokedexCount": 4,
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1786230368,
+      "timestamp": 1786289197,
       "blackouts": 0
     },
     "54367": {
       "trainerId": "54367",
-      "name": "JameseG",
+      "name": "THS GUY",
       "title": "ACE TRAINER",
       "badges": 0,
-      "pokedexCount": 0,
+      "pokedexCount": 8,
       "gtsTrades": 0,
       "pvpWins": 1,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1786211045
+      "timestamp": 1786288843,
+      "blackouts": 0
     },
     "13330": {
       "trainerId": "13330",
@@ -718,14 +814,15 @@
     },
     "54389": {
       "trainerId": "54389",
-      "name": "PLEP",
+      "name": "PAT",
       "title": "ACE TRAINER",
       "badges": 0,
-      "pokedexCount": 0,
+      "pokedexCount": 3,
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1786221261
+      "timestamp": 1786271020,
+      "blackouts": 0
     },
     "1624": {
       "trainerId": "1624",
@@ -740,14 +837,15 @@
     },
     "46228": {
       "trainerId": "46228",
-      "name": "\u00d7ander",
+      "name": "YELLOW",
       "title": "ACE TRAINER",
       "badges": 0,
-      "pokedexCount": 0,
+      "pokedexCount": 1,
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1786206167
+      "timestamp": 1786288984,
+      "blackouts": 0
     },
     "17823": {
       "trainerId": "17823",
@@ -796,14 +894,15 @@
     },
     "6764": {
       "trainerId": "6764",
-      "name": "Mattia<PK>",
-      "title": "POK\u00e9MON CHAMPION",
+      "name": "NOSUCC",
+      "title": "ACE TRAINER",
       "badges": 0,
-      "pokedexCount": 151,
+      "pokedexCount": 1,
       "gtsTrades": 0,
       "pvpWins": 0,
-      "favoriteMon": "MEWTWO",
-      "timestamp": 1785735659
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1786241525,
+      "blackouts": 1
     },
     "27963": {
       "trainerId": "27963",
@@ -830,14 +929,15 @@
     },
     "29605": {
       "trainerId": "29605",
-      "name": "SETHREZ",
+      "name": "MYLES",
       "title": "ACE TRAINER",
       "badges": 0,
-      "pokedexCount": 0,
+      "pokedexCount": 1,
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1785764596
+      "timestamp": 1786239627,
+      "blackouts": 0
     },
     "32722": {
       "trainerId": "32722",
@@ -852,25 +952,27 @@
     },
     "37263": {
       "trainerId": "37263",
-      "name": "BIGZ",
+      "name": "RED",
       "title": "ACE TRAINER",
       "badges": 0,
-      "pokedexCount": 0,
+      "pokedexCount": 1,
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1786197185
+      "timestamp": 1786274811,
+      "blackouts": 1
     },
     "18149": {
       "trainerId": "18149",
-      "name": "KOLA",
+      "name": "Lyndis",
       "title": "ACE TRAINER",
       "badges": 0,
-      "pokedexCount": 4,
+      "pokedexCount": 1,
       "gtsTrades": 0,
       "pvpWins": 1,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1786229337
+      "timestamp": 1786250756,
+      "blackouts": 0
     },
     "34292": {
       "trainerId": "34292",
@@ -896,14 +998,15 @@
     },
     "16743": {
       "trainerId": "16743",
-      "name": "Skyler",
+      "name": "RED",
       "title": "ACE TRAINER",
       "badges": 0,
-      "pokedexCount": 81,
+      "pokedexCount": 4,
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1786229281
+      "timestamp": 1786281157,
+      "blackouts": 0
     },
     "7501": {
       "trainerId": "7501",
@@ -918,36 +1021,39 @@
     },
     "11845": {
       "trainerId": "11845",
-      "name": "JAY",
-      "title": "ACE TRAINER",
-      "badges": 0,
-      "pokedexCount": 0,
-      "gtsTrades": 0,
-      "pvpWins": 0,
-      "favoriteMon": "CHARIZARD",
-      "timestamp": 1786175943
-    },
-    "43326": {
-      "trainerId": "43326",
-      "name": "RED",
+      "name": "LOKI",
       "title": "ACE TRAINER",
       "badges": 0,
       "pokedexCount": 1,
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1786227472
+      "timestamp": 1786249954,
+      "blackouts": 0
+    },
+    "43326": {
+      "trainerId": "43326",
+      "name": "WILL",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 5,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1786277089,
+      "blackouts": 0
     },
     "38227": {
       "trainerId": "38227",
-      "name": "Nick",
+      "name": "ABURRIT",
       "title": "ACE TRAINER",
       "badges": 0,
       "pokedexCount": 0,
       "gtsTrades": 0,
       "pvpWins": 1,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1786215205
+      "timestamp": 1786288858,
+      "blackouts": 0
     },
     "40198": {
       "trainerId": "40198",
@@ -973,14 +1079,15 @@
     },
     "41058": {
       "trainerId": "41058",
-      "name": "Dylan",
+      "name": "JORDAN",
       "title": "ACE TRAINER",
       "badges": 0,
-      "pokedexCount": 7,
+      "pokedexCount": 1,
       "gtsTrades": 0,
       "pvpWins": 1,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1786200442
+      "timestamp": 1786287992,
+      "blackouts": 0
     },
     "33196": {
       "trainerId": "33196",
@@ -1020,22 +1127,24 @@
       "name": "RED",
       "title": "ACE TRAINER",
       "badges": 0,
-      "pokedexCount": 133,
+      "pokedexCount": 134,
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1786178276
+      "timestamp": 1786267866,
+      "blackouts": 0
     },
     "24551": {
       "trainerId": "24551",
-      "name": "KAYLA",
-      "title": "SUPER NERD",
+      "name": "KAYLA96",
+      "title": "ACE TRAINER",
       "badges": 0,
-      "pokedexCount": 151,
+      "pokedexCount": 1,
       "gtsTrades": 0,
       "pvpWins": 0,
-      "favoriteMon": "BOWZER",
-      "timestamp": 1786182141
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1786269174,
+      "blackouts": 0
     },
     "30657": {
       "trainerId": "30657",
@@ -1105,26 +1214,27 @@
     },
     "13839": {
       "trainerId": "13839",
-      "name": "Zac",
+      "name": "Adward",
       "title": "ACE TRAINER",
       "badges": 0,
-      "pokedexCount": 10,
+      "pokedexCount": 9,
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1786209499,
+      "timestamp": 1786289233,
       "blackouts": 0
     },
     "30956": {
       "trainerId": "30956",
-      "name": "HENRY",
-      "title": "SUPER NERD",
+      "name": "Kurm",
+      "title": "ACE TRAINER",
       "badges": 0,
-      "pokedexCount": 1,
+      "pokedexCount": 9,
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1786223038
+      "timestamp": 1786287311,
+      "blackouts": 0
     },
     "44362": {
       "trainerId": "44362",
@@ -1185,25 +1295,27 @@
     },
     "36260": {
       "trainerId": "36260",
-      "name": "JONAS",
+      "name": "Skyle",
       "title": "ACE TRAINER",
       "badges": 0,
       "pokedexCount": 1,
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1786211280
+      "timestamp": 1786246195,
+      "blackouts": 0
     },
     "44499": {
       "trainerId": "44499",
-      "name": "BRIAN",
+      "name": "Myles",
       "title": "ACE TRAINER",
       "badges": 0,
       "pokedexCount": 0,
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1786213500
+      "timestamp": 1786243260,
+      "blackouts": 0
     },
     "29738": {
       "trainerId": "29738",
@@ -1229,70 +1341,350 @@
     },
     "23786": {
       "trainerId": "23786",
-      "name": "Nikolis",
+      "name": "Sona",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 1,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1786282112,
+      "blackouts": 0
+    },
+    "5148": {
+      "trainerId": "5148",
+      "name": "Clover",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 1,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1786264663,
+      "blackouts": 0
+    },
+    "54181": {
+      "trainerId": "54181",
+      "name": "MILTON",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 17,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1786257235,
+      "blackouts": 2
+    },
+    "23255": {
+      "trainerId": "23255",
+      "name": "Tskch",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 1,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1786268559,
+      "blackouts": 0
+    },
+    "26540": {
+      "trainerId": "26540",
+      "name": "Albert",
       "title": "ACE TRAINER",
       "badges": 0,
       "pokedexCount": 0,
       "gtsTrades": 0,
       "pvpWins": 0,
       "favoriteMon": "CHARIZARD",
-      "timestamp": 1786221263
+      "timestamp": 1786256248,
+      "blackouts": 0
+    },
+    "44056": {
+      "trainerId": "44056",
+      "name": "MAKOTO",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 1,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1786256414,
+      "blackouts": 0
+    },
+    "60422": {
+      "trainerId": "60422",
+      "name": "BALLS",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 4,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1786257219,
+      "blackouts": 0
+    },
+    "45585": {
+      "trainerId": "45585",
+      "name": "Shana",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 1,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1786265552,
+      "blackouts": 0
+    },
+    "62733": {
+      "trainerId": "62733",
+      "name": "K!ERAN",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 25,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1786266115,
+      "blackouts": 0
+    },
+    "7718": {
+      "trainerId": "7718",
+      "name": "Clover",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 3,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1786266996,
+      "blackouts": 0
+    },
+    "60358": {
+      "trainerId": "60358",
+      "name": "Reen",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 8,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1786289092,
+      "blackouts": 0
+    },
+    "52049": {
+      "trainerId": "52049",
+      "name": "RED",
+      "title": "ACE TRAINER",
+      "badges": 0,
+      "pokedexCount": 1,
+      "gtsTrades": 0,
+      "pvpWins": 0,
+      "favoriteMon": "CHARIZARD",
+      "timestamp": 1786286218,
+      "blackouts": 0
+    },
+    "116972": {
+      "trainerId": "116972",
+      "name": "BCD",
+      "spriteId": "SPRITE_BLUE",
+      "title": "ACE TRAINER",
+      "level": 1,
+      "xp": 0,
+      "badges": 0,
+      "pokedexCount": 2,
+      "favoriteMon": "SQUIRTLE",
+      "lastSeen": 1786287136,
+      "blackouts": 0,
+      "pvpWins": 0,
+      "timestamp": 1786288576
+    },
+    "910086": {
+      "trainerId": "910086",
+      "name": "KIKI",
+      "spriteId": "SPRITE_COOLTRAINER_M",
+      "title": "ACE TRAINER",
+      "level": 1,
+      "xp": 0,
+      "badges": 0,
+      "pokedexCount": 0,
+      "favoriteMon": "PIKACHU",
+      "lastSeen": 1786287416
+    },
+    "963682": {
+      "trainerId": "963682",
+      "name": "DATBICH",
+      "spriteId": "SPRITE_RED",
+      "title": "ACE TRAINER",
+      "level": 1,
+      "xp": 0,
+      "badges": 0,
+      "pokedexCount": 0,
+      "favoriteMon": "PIKACHU",
+      "lastSeen": 1786287749
+    },
+    "254375": {
+      "trainerId": "254375",
+      "name": "D",
+      "spriteId": "SPRITE_ROCKET",
+      "title": "ACE TRAINER",
+      "level": 1,
+      "xp": 0,
+      "badges": 0,
+      "pokedexCount": 0,
+      "favoriteMon": "PIKACHU",
+      "lastSeen": 1786287760
+    },
+    "623685": {
+      "trainerId": "623685",
+      "name": "JOSHUA",
+      "spriteId": "SPRITE_WAITER",
+      "title": "ACE TRAINER",
+      "level": 1,
+      "xp": 0,
+      "badges": 0,
+      "pokedexCount": 0,
+      "favoriteMon": "PIKACHU",
+      "lastSeen": 1786287877
+    },
+    "219893": {
+      "trainerId": "219893",
+      "name": "Dennis",
+      "spriteId": "SPRITE_BLUE",
+      "title": "ACE TRAINER",
+      "level": 1,
+      "xp": 0,
+      "badges": 0,
+      "pokedexCount": 0,
+      "favoriteMon": "PIKACHU",
+      "lastSeen": 1786287892
+    },
+    "877424": {
+      "trainerId": "877424",
+      "name": "SR.GEN",
+      "spriteId": "SPRITE_RED",
+      "title": "ACE TRAINER",
+      "level": 1,
+      "xp": 0,
+      "badges": 0,
+      "pokedexCount": 0,
+      "favoriteMon": "PIKACHU",
+      "lastSeen": 1786288032
+    },
+    "504082": {
+      "trainerId": "504082",
+      "name": "SR.GENE",
+      "spriteId": "SPRITE_RED",
+      "title": "ACE TRAINER",
+      "level": 1,
+      "xp": 0,
+      "badges": 0,
+      "pokedexCount": 0,
+      "favoriteMon": "PIKACHU",
+      "lastSeen": 1786288181
+    },
+    "286334": {
+      "trainerId": "286334",
+      "name": "Digi",
+      "spriteId": "SPRITE_COOLTRAINER_M",
+      "title": "ACE TRAINER",
+      "level": 1,
+      "xp": 0,
+      "badges": 0,
+      "pokedexCount": 0,
+      "favoriteMon": "PIKACHU",
+      "lastSeen": 1786288689
+    },
+    "751436": {
+      "trainerId": "751436",
+      "name": "ABURRIT",
+      "spriteId": "SPRITE_RED",
+      "title": "ACE TRAINER",
+      "level": 1,
+      "xp": 0,
+      "badges": 0,
+      "pokedexCount": 0,
+      "favoriteMon": "PIKACHU",
+      "lastSeen": 1786288816
+    },
+    "906029": {
+      "trainerId": "906029",
+      "name": "Chronic",
+      "spriteId": "SPRITE_RED",
+      "title": "ACE TRAINER",
+      "level": 1,
+      "xp": 0,
+      "badges": 0,
+      "pokedexCount": 0,
+      "favoriteMon": "PIKACHU",
+      "lastSeen": 1786288892
+    },
+    "530268": {
+      "trainerId": "530268",
+      "name": "BCFFGHH",
+      "spriteId": "SPRITE_SAILOR",
+      "title": "ACE TRAINER",
+      "level": 1,
+      "xp": 0,
+      "badges": 0,
+      "pokedexCount": 0,
+      "favoriteMon": "PIKACHU",
+      "lastSeen": 1786289178
     }
   },
   "accounts": {
     "39106": {
       "trainerId": "39106",
-      "name": "Jon",
-      "spriteId": "SPRITE_OAK",
-      "level": 6,
-      "xp": 1190,
+      "name": "COOLGUY",
+      "spriteId": "SPRITE_ROCKET",
+      "level": 12,
+      "xp": 3990,
       "token": "A7CC6E21",
       "badges": 0,
-      "pokedexCount": 0,
+      "pokedexCount": 1,
       "wildBattles": 0,
-      "trainerBattles": 21,
+      "trainerBattles": 88,
       "pvpWins": 0,
       "pvpLosses": 0,
-      "breedingCount": 0,
+      "breedingCount": 2,
       "title": "ACE TRAINER",
       "favoriteMon": "PIKACHU",
       "isBanned": false,
       "createdAt": 1786153605,
-      "lastSeen": 1786234680,
+      "lastSeen": 1786286354,
       "blackoutCount": 0
     },
     "11531": {
       "trainerId": "11531",
-      "name": "HIPPO",
-      "spriteId": "SPRITE_LASS",
-      "level": 2,
-      "xp": 165,
+      "name": "ASH",
+      "spriteId": "SPRITE_RED",
+      "level": 18,
+      "xp": 8955,
       "token": "989F2D31",
       "badges": 0,
       "pokedexCount": 16,
       "wildBattles": 0,
-      "trainerBattles": 1,
+      "trainerBattles": 204,
       "pvpWins": 1,
       "pvpLosses": 1,
-      "breedingCount": 0,
+      "breedingCount": 2,
       "title": "ACE TRAINER",
       "favoriteMon": "PIKACHU",
       "isBanned": false,
       "createdAt": 1786158981,
-      "lastSeen": 1786235127,
+      "lastSeen": 1786281861,
       "blackoutCount": 0
     },
     "43326": {
       "trainerId": "43326",
-      "name": "Phrynge",
-      "spriteId": "SPRITE_SUPER_NERD",
-      "level": 1,
-      "xp": 0,
+      "name": "WILL",
+      "spriteId": "SPRITE_COOLTRAINER_M",
+      "level": 6,
+      "xp": 1240,
       "token": "6FD765EB",
       "badges": 0,
-      "pokedexCount": 1,
+      "pokedexCount": 5,
       "wildBattles": 0,
-      "trainerBattles": 0,
+      "trainerBattles": 26,
       "pvpWins": 0,
       "pvpLosses": 0,
       "breedingCount": 0,
@@ -1300,48 +1692,49 @@
       "favoriteMon": "PIKACHU",
       "isBanned": false,
       "createdAt": 1786159467,
-      "lastSeen": 1786159467
+      "lastSeen": 1786277064,
+      "blackoutCount": 0
     },
     "45799": {
       "trainerId": "45799",
-      "name": "Zefir",
-      "spriteId": "SPRITE_COOLTRAINER_M",
-      "level": 10,
-      "xp": 2905,
+      "name": "LEAN",
+      "spriteId": "SPRITE_RED",
+      "level": 31,
+      "xp": 22915,
       "token": "FDBA840C",
       "badges": 0,
-      "pokedexCount": 4,
+      "pokedexCount": 2,
       "wildBattles": 0,
-      "trainerBattles": 63,
+      "trainerBattles": 490,
       "pvpWins": 0,
       "pvpLosses": 3,
-      "breedingCount": 1,
+      "breedingCount": 4,
       "title": "ACE TRAINER",
       "favoriteMon": "PIKACHU",
       "isBanned": false,
       "createdAt": 1786159732,
-      "lastSeen": 1786235790,
-      "blackoutCount": 2
+      "lastSeen": 1786289243,
+      "blackoutCount": 0
     },
     "38673": {
       "trainerId": "38673",
-      "name": "AMUZER",
-      "spriteId": "SPRITE_COOLTRAINER_M",
-      "level": 7,
-      "xp": 1290,
+      "name": "Ocean",
+      "spriteId": "SPRITE_SAILOR",
+      "level": 25,
+      "xp": 15365,
       "token": "5F9DF938",
       "badges": 0,
       "pokedexCount": 1,
       "wildBattles": 0,
-      "trainerBattles": 31,
+      "trainerBattles": 349,
       "pvpWins": 0,
-      "pvpLosses": 0,
-      "breedingCount": 0,
+      "pvpLosses": 1,
+      "breedingCount": 3,
       "title": "ACE TRAINER",
       "favoriteMon": "PIKACHU",
       "isBanned": false,
       "createdAt": 1786160022,
-      "lastSeen": 1786235297,
+      "lastSeen": 1786288838,
       "blackoutCount": 0
     },
     "38227": {
@@ -1362,7 +1755,8 @@
       "favoriteMon": "PIKACHU",
       "isBanned": false,
       "createdAt": 1786161080,
-      "lastSeen": 1786162700
+      "lastSeen": 1786162700,
+      "blackoutCount": 0
     },
     "1624": {
       "trainerId": "1624",
@@ -1388,13 +1782,13 @@
       "trainerId": "43253",
       "name": "TEMPO",
       "spriteId": "SPRITE_RED",
-      "level": 1,
-      "xp": 0,
+      "level": 6,
+      "xp": 980,
       "token": "459D3CDF",
       "badges": 0,
-      "pokedexCount": 0,
+      "pokedexCount": 3,
       "wildBattles": 0,
-      "trainerBattles": 0,
+      "trainerBattles": 22,
       "pvpWins": 0,
       "pvpLosses": 0,
       "breedingCount": 0,
@@ -1402,19 +1796,20 @@
       "favoriteMon": "PIKACHU",
       "isBanned": false,
       "createdAt": 1786162111,
-      "lastSeen": 1786208072
+      "lastSeen": 1786275674,
+      "blackoutCount": 0
     },
     "54389": {
       "trainerId": "54389",
-      "name": "PLEP",
-      "spriteId": "SPRITE_ROCKET",
-      "level": 1,
-      "xp": 0,
+      "name": "MINT",
+      "spriteId": "SPRITE_RED",
+      "level": 3,
+      "xp": 240,
       "token": "10A06863",
       "badges": 0,
-      "pokedexCount": 0,
+      "pokedexCount": 3,
       "wildBattles": 0,
-      "trainerBattles": 0,
+      "trainerBattles": 6,
       "pvpWins": 0,
       "pvpLosses": 0,
       "breedingCount": 0,
@@ -1422,40 +1817,41 @@
       "favoriteMon": "PIKACHU",
       "isBanned": false,
       "createdAt": 1786164100,
-      "lastSeen": 1786221261
+      "lastSeen": 1786270647,
+      "blackoutCount": 0
     },
     "9444": {
       "trainerId": "9444",
-      "name": "Hobo",
-      "spriteId": "SPRITE_RED",
-      "level": 14,
-      "xp": 5240,
+      "name": "Erik",
+      "spriteId": "SPRITE_ROCKET",
+      "level": 15,
+      "xp": 6250,
       "token": "32694E0F",
       "badges": 0,
-      "pokedexCount": 22,
+      "pokedexCount": 4,
       "wildBattles": 0,
-      "trainerBattles": 100,
+      "trainerBattles": 117,
       "pvpWins": 0,
       "pvpLosses": 0,
-      "breedingCount": 4,
+      "breedingCount": 7,
       "title": "ACE TRAINER",
       "favoriteMon": "PIKACHU",
       "isBanned": false,
       "createdAt": 1786164364,
-      "lastSeen": 1786230367,
+      "lastSeen": 1786288559,
       "blackoutCount": 0
     },
     "49363": {
       "trainerId": "49363",
-      "name": "BoHamod",
+      "name": "AAAAAAA",
       "spriteId": "SPRITE_RED",
-      "level": 1,
-      "xp": 25,
+      "level": 7,
+      "xp": 1385,
       "token": "CD8AB3F3",
       "badges": 0,
       "pokedexCount": 0,
       "wildBattles": 0,
-      "trainerBattles": 0,
+      "trainerBattles": 29,
       "pvpWins": 0,
       "pvpLosses": 1,
       "breedingCount": 0,
@@ -1463,8 +1859,8 @@
       "favoriteMon": "PIKACHU",
       "isBanned": false,
       "createdAt": 1786167286,
-      "lastSeen": 1786221016,
-      "blackoutCount": 1
+      "lastSeen": 1786287217,
+      "blackoutCount": 0
     },
     "60368": {
       "trainerId": "60368",
@@ -1510,13 +1906,13 @@
       "trainerId": "41058",
       "name": "HmnQlus",
       "spriteId": "SPRITE_YOUNGSTER",
-      "level": 2,
-      "xp": 100,
+      "level": 3,
+      "xp": 180,
       "token": "C59C95A2",
       "badges": 0,
-      "pokedexCount": 7,
+      "pokedexCount": 1,
       "wildBattles": 0,
-      "trainerBattles": 0,
+      "trainerBattles": 2,
       "pvpWins": 1,
       "pvpLosses": 0,
       "breedingCount": 0,
@@ -1524,38 +1920,39 @@
       "favoriteMon": "PIKACHU",
       "isBanned": false,
       "createdAt": 1786169243,
-      "lastSeen": 1786171805
+      "lastSeen": 1786287937,
+      "blackoutCount": 0
     },
     "5306": {
       "trainerId": "5306",
-      "name": "KOOLKAT",
+      "name": "A",
       "spriteId": "SPRITE_RED",
-      "level": 10,
-      "xp": 2780,
+      "level": 16,
+      "xp": 6825,
       "token": "45CB55A0",
       "badges": 0,
-      "pokedexCount": 6,
+      "pokedexCount": 2,
       "wildBattles": 0,
-      "trainerBattles": 62,
+      "trainerBattles": 156,
       "pvpWins": 0,
-      "pvpLosses": 2,
-      "breedingCount": 0,
+      "pvpLosses": 3,
+      "breedingCount": 1,
       "title": "ACE TRAINER",
       "favoriteMon": "PIKACHU",
       "isBanned": false,
       "createdAt": 1786169372,
-      "lastSeen": 1786233509,
+      "lastSeen": 1786273955,
       "blackoutCount": 0
     },
     "16743": {
       "trainerId": "16743",
-      "name": "SPAKELL",
-      "spriteId": "SPRITE_RED",
+      "name": "JDMR",
+      "spriteId": "SPRITE_WAITER",
       "level": 1,
       "xp": 0,
       "token": "80236D18",
       "badges": 0,
-      "pokedexCount": 81,
+      "pokedexCount": 4,
       "wildBattles": 0,
       "trainerBattles": 0,
       "pvpWins": 0,
@@ -1565,40 +1962,41 @@
       "favoriteMon": "PIKACHU",
       "isBanned": false,
       "createdAt": 1786169958,
-      "lastSeen": 1786224053
+      "lastSeen": 1786279687,
+      "blackoutCount": 0
     },
     "37692": {
       "trainerId": "37692",
-      "name": "Kaster",
-      "spriteId": "SPRITE_COOLTRAINER_F",
-      "level": 1,
-      "xp": 40,
+      "name": "ERIS",
+      "spriteId": "SPRITE_GIRL",
+      "level": 16,
+      "xp": 6800,
       "token": "344BB9C1",
       "badges": 0,
-      "pokedexCount": 1,
+      "pokedexCount": 15,
       "wildBattles": 0,
-      "trainerBattles": 1,
+      "trainerBattles": 156,
       "pvpWins": 0,
       "pvpLosses": 0,
-      "breedingCount": 0,
+      "breedingCount": 1,
       "title": "ACE TRAINER",
       "favoriteMon": "PIKACHU",
       "isBanned": false,
       "createdAt": 1786172421,
-      "lastSeen": 1786234630,
-      "blackoutCount": 0
+      "lastSeen": 1786258727,
+      "blackoutCount": 1
     },
     "11845": {
       "trainerId": "11845",
       "name": "JAY",
       "spriteId": "SPRITE_COOLTRAINER_M",
-      "level": 1,
-      "xp": 0,
+      "level": 2,
+      "xp": 120,
       "token": "AE306AD5",
       "badges": 0,
-      "pokedexCount": 0,
+      "pokedexCount": 1,
       "wildBattles": 0,
-      "trainerBattles": 0,
+      "trainerBattles": 3,
       "pvpWins": 0,
       "pvpLosses": 0,
       "breedingCount": 0,
@@ -1606,27 +2004,29 @@
       "favoriteMon": "PIKACHU",
       "isBanned": false,
       "createdAt": 1786175867,
-      "lastSeen": 1786175867
+      "lastSeen": 1786249954,
+      "blackoutCount": 0
     },
     "46228": {
       "trainerId": "46228",
-      "name": "\u00d7ander",
-      "spriteId": "SPRITE_RED",
-      "level": 1,
-      "xp": 0,
+      "name": "AB",
+      "spriteId": "SPRITE_GIRL",
+      "level": 14,
+      "xp": 5280,
       "token": "15790882",
       "badges": 0,
-      "pokedexCount": 0,
+      "pokedexCount": 1,
       "wildBattles": 0,
-      "trainerBattles": 0,
+      "trainerBattles": 128,
       "pvpWins": 0,
       "pvpLosses": 0,
-      "breedingCount": 0,
+      "breedingCount": 1,
       "title": "ACE TRAINER",
       "favoriteMon": "PIKACHU",
       "isBanned": false,
       "createdAt": 1786184451,
-      "lastSeen": 1786206167
+      "lastSeen": 1786288982,
+      "blackoutCount": 0
     },
     "23206": {
       "trainerId": "23206",
@@ -1670,15 +2070,15 @@
     },
     "63884": {
       "trainerId": "63884",
-      "name": "NIGHT",
-      "spriteId": "SPRITE_RED",
-      "level": 1,
-      "xp": 40,
+      "name": "TEEHEE",
+      "spriteId": "SPRITE_GIRL",
+      "level": 4,
+      "xp": 390,
       "token": "854FD110",
       "badges": 0,
-      "pokedexCount": 0,
+      "pokedexCount": 36,
       "wildBattles": 0,
-      "trainerBattles": 1,
+      "trainerBattles": 6,
       "pvpWins": 0,
       "pvpLosses": 0,
       "breedingCount": 0,
@@ -1686,7 +2086,7 @@
       "favoriteMon": "PIKACHU",
       "isBanned": false,
       "createdAt": 1786190799,
-      "lastSeen": 1786226256,
+      "lastSeen": 1786271431,
       "blackoutCount": 0
     },
     "59748": {
@@ -1751,15 +2151,15 @@
     },
     "13839": {
       "trainerId": "13839",
-      "name": "Zac",
-      "spriteId": "SPRITE_COOLTRAINER_M",
-      "level": 12,
-      "xp": 3980,
+      "name": "Adward",
+      "spriteId": "SPRITE_RED",
+      "level": 15,
+      "xp": 5900,
       "token": "62D6DC90",
       "badges": 0,
-      "pokedexCount": 10,
+      "pokedexCount": 9,
       "wildBattles": 0,
-      "trainerBattles": 94,
+      "trainerBattles": 132,
       "pvpWins": 0,
       "pvpLosses": 0,
       "breedingCount": 2,
@@ -1767,20 +2167,20 @@
       "favoriteMon": "PIKACHU",
       "isBanned": false,
       "createdAt": 1786196640,
-      "lastSeen": 1786209489,
+      "lastSeen": 1786289233,
       "blackoutCount": 0
     },
     "18149": {
       "trainerId": "18149",
-      "name": "BLACK",
-      "spriteId": "SPRITE_RED",
-      "level": 1,
-      "xp": 0,
+      "name": "Lyndis",
+      "spriteId": "SPRITE_GIRL",
+      "level": 2,
+      "xp": 80,
       "token": "AC473E4C",
       "badges": 0,
-      "pokedexCount": 4,
+      "pokedexCount": 1,
       "wildBattles": 0,
-      "trainerBattles": 0,
+      "trainerBattles": 2,
       "pvpWins": 0,
       "pvpLosses": 0,
       "breedingCount": 0,
@@ -1788,19 +2188,20 @@
       "favoriteMon": "PIKACHU",
       "isBanned": false,
       "createdAt": 1786197117,
-      "lastSeen": 1786224576
+      "lastSeen": 1786250755,
+      "blackoutCount": 0
     },
     "37263": {
       "trainerId": "37263",
-      "name": "BIGZ",
+      "name": "JJJ",
       "spriteId": "SPRITE_RED",
-      "level": 1,
-      "xp": 0,
+      "level": 2,
+      "xp": 160,
       "token": "9469C1E3",
       "badges": 0,
-      "pokedexCount": 0,
+      "pokedexCount": 1,
       "wildBattles": 0,
-      "trainerBattles": 0,
+      "trainerBattles": 4,
       "pvpWins": 0,
       "pvpLosses": 0,
       "breedingCount": 0,
@@ -1808,27 +2209,29 @@
       "favoriteMon": "PIKACHU",
       "isBanned": false,
       "createdAt": 1786197185,
-      "lastSeen": 1786197185
+      "lastSeen": 1786274750,
+      "blackoutCount": 1
     },
     "30956": {
       "trainerId": "30956",
-      "name": "B",
-      "spriteId": "SPRITE_RED",
-      "level": 1,
-      "xp": 0,
+      "name": "Kurm",
+      "spriteId": "SPRITE_COOLTRAINER_M",
+      "level": 7,
+      "xp": 1280,
       "token": "28CFA2DD",
       "badges": 0,
-      "pokedexCount": 1,
+      "pokedexCount": 9,
       "wildBattles": 0,
-      "trainerBattles": 0,
+      "trainerBattles": 28,
       "pvpWins": 0,
       "pvpLosses": 0,
-      "breedingCount": 0,
+      "breedingCount": 1,
       "title": "ACE TRAINER",
       "favoriteMon": "PIKACHU",
       "isBanned": false,
       "createdAt": 1786200557,
-      "lastSeen": 1786210181
+      "lastSeen": 1786287311,
+      "blackoutCount": 0
     },
     "52227": {
       "trainerId": "52227",
@@ -1953,15 +2356,15 @@
     },
     "36260": {
       "trainerId": "36260",
-      "name": "JONAS",
-      "spriteId": "SPRITE_BLUE",
-      "level": 1,
-      "xp": 0,
+      "name": "Skyle",
+      "spriteId": "SPRITE_SUPER_NERD",
+      "level": 2,
+      "xp": 160,
       "token": "CD3B4CA2",
       "badges": 0,
       "pokedexCount": 1,
       "wildBattles": 0,
-      "trainerBattles": 0,
+      "trainerBattles": 4,
       "pvpWins": 0,
       "pvpLosses": 0,
       "breedingCount": 0,
@@ -1969,19 +2372,20 @@
       "favoriteMon": "PIKACHU",
       "isBanned": false,
       "createdAt": 1786211035,
-      "lastSeen": 1786211035
+      "lastSeen": 1786246195,
+      "blackoutCount": 0
     },
     "54367": {
       "trainerId": "54367",
-      "name": "JameseG",
-      "spriteId": "SPRITE_WAITER",
-      "level": 1,
-      "xp": 0,
+      "name": "BEN",
+      "spriteId": "SPRITE_YOUNGSTER",
+      "level": 3,
+      "xp": 360,
       "token": "019E0710",
       "badges": 0,
-      "pokedexCount": 0,
+      "pokedexCount": 8,
       "wildBattles": 0,
-      "trainerBattles": 0,
+      "trainerBattles": 9,
       "pvpWins": 0,
       "pvpLosses": 0,
       "breedingCount": 0,
@@ -1989,19 +2393,20 @@
       "favoriteMon": "PIKACHU",
       "isBanned": false,
       "createdAt": 1786211045,
-      "lastSeen": 1786211045
+      "lastSeen": 1786288843,
+      "blackoutCount": 0
     },
     "22238": {
       "trainerId": "22238",
-      "name": "Jester",
-      "spriteId": "SPRITE_RED",
-      "level": 2,
-      "xp": 120,
+      "name": "<PK><MN>King",
+      "spriteId": "SPRITE_BLACKBELT",
+      "level": 9,
+      "xp": 2540,
       "token": "E2D90743",
       "badges": 0,
-      "pokedexCount": 1,
+      "pokedexCount": 0,
       "wildBattles": 0,
-      "trainerBattles": 3,
+      "trainerBattles": 56,
       "pvpWins": 0,
       "pvpLosses": 0,
       "breedingCount": 0,
@@ -2009,7 +2414,7 @@
       "favoriteMon": "PIKACHU",
       "isBanned": false,
       "createdAt": 1786214391,
-      "lastSeen": 1786230037,
+      "lastSeen": 1786250022,
       "blackoutCount": 0
     },
     "29738": {
@@ -2034,15 +2439,15 @@
     },
     "23786": {
       "trainerId": "23786",
-      "name": "Nikolis",
+      "name": "Sona",
       "spriteId": "SPRITE_RED",
-      "level": 1,
-      "xp": 0,
+      "level": 2,
+      "xp": 120,
       "token": "0AB0EEFE",
       "badges": 0,
-      "pokedexCount": 0,
+      "pokedexCount": 1,
       "wildBattles": 0,
-      "trainerBattles": 0,
+      "trainerBattles": 3,
       "pvpWins": 0,
       "pvpLosses": 0,
       "breedingCount": 0,
@@ -2050,7 +2455,8 @@
       "favoriteMon": "PIKACHU",
       "isBanned": false,
       "createdAt": 1786221263,
-      "lastSeen": 1786221263
+      "lastSeen": 1786282047,
+      "blackoutCount": 0
     },
     "27963": {
       "trainerId": "27963",
@@ -2113,6 +2519,457 @@
       "createdAt": 1786232421,
       "lastSeen": 1786232421,
       "blackoutCount": 0
+    },
+    "5148": {
+      "trainerId": "5148",
+      "name": "NEKU",
+      "spriteId": "SPRITE_RED",
+      "level": 1,
+      "xp": 40,
+      "token": "E8844B76",
+      "badges": 0,
+      "pokedexCount": 1,
+      "wildBattles": 0,
+      "trainerBattles": 1,
+      "pvpWins": 0,
+      "pvpLosses": 0,
+      "breedingCount": 0,
+      "title": "ACE TRAINER",
+      "favoriteMon": "PIKACHU",
+      "isBanned": false,
+      "createdAt": 1786238090,
+      "lastSeen": 1786264663,
+      "blackoutCount": 0
+    },
+    "6764": {
+      "trainerId": "6764",
+      "name": "NOSUCC",
+      "spriteId": "SPRITE_GIRL",
+      "level": 1,
+      "xp": 0,
+      "token": "959EE09C",
+      "badges": 0,
+      "pokedexCount": 1,
+      "wildBattles": 0,
+      "trainerBattles": 0,
+      "pvpWins": 0,
+      "pvpLosses": 0,
+      "breedingCount": 0,
+      "title": "ACE TRAINER",
+      "favoriteMon": "PIKACHU",
+      "isBanned": false,
+      "createdAt": 1786240944,
+      "lastSeen": 1786240944,
+      "blackoutCount": 1
+    },
+    "44499": {
+      "trainerId": "44499",
+      "name": "KEEB",
+      "spriteId": "SPRITE_RED",
+      "level": 6,
+      "xp": 1150,
+      "token": "9EE840D3",
+      "badges": 0,
+      "pokedexCount": 0,
+      "wildBattles": 0,
+      "trainerBattles": 25,
+      "pvpWins": 0,
+      "pvpLosses": 0,
+      "breedingCount": 0,
+      "title": "ACE TRAINER",
+      "favoriteMon": "PIKACHU",
+      "isBanned": false,
+      "createdAt": 1786241193,
+      "lastSeen": 1786242645,
+      "blackoutCount": 0
+    },
+    "54181": {
+      "trainerId": "54181",
+      "name": "Milton",
+      "spriteId": "SPRITE_WAITER",
+      "level": 7,
+      "xp": 1480,
+      "token": "87FAAEC2",
+      "badges": 0,
+      "pokedexCount": 17,
+      "wildBattles": 0,
+      "trainerBattles": 32,
+      "pvpWins": 0,
+      "pvpLosses": 0,
+      "breedingCount": 0,
+      "title": "ACE TRAINER",
+      "favoriteMon": "PIKACHU",
+      "isBanned": false,
+      "createdAt": 1786245676,
+      "lastSeen": 1786257175,
+      "blackoutCount": 2
+    },
+    "44056": {
+      "trainerId": "44056",
+      "name": "MAKOTO",
+      "spriteId": "SPRITE_BLUE",
+      "level": 1,
+      "xp": 0,
+      "token": "C9F0B206",
+      "badges": 0,
+      "pokedexCount": 1,
+      "wildBattles": 0,
+      "trainerBattles": 0,
+      "pvpWins": 0,
+      "pvpLosses": 0,
+      "breedingCount": 0,
+      "title": "ACE TRAINER",
+      "favoriteMon": "PIKACHU",
+      "isBanned": false,
+      "createdAt": 1786255303,
+      "lastSeen": 1786255947,
+      "blackoutCount": 0
+    },
+    "26540": {
+      "trainerId": "26540",
+      "name": "Albert",
+      "spriteId": "SPRITE_RED",
+      "level": 1,
+      "xp": 0,
+      "token": "7343E448",
+      "badges": 0,
+      "pokedexCount": 0,
+      "wildBattles": 0,
+      "trainerBattles": 0,
+      "pvpWins": 0,
+      "pvpLosses": 0,
+      "breedingCount": 0,
+      "title": "ACE TRAINER",
+      "favoriteMon": "PIKACHU",
+      "isBanned": false,
+      "createdAt": 1786256011,
+      "lastSeen": 1786256011,
+      "blackoutCount": 0
+    },
+    "24551": {
+      "trainerId": "24551",
+      "name": "KAYLA96",
+      "spriteId": "SPRITE_GIRL",
+      "level": 2,
+      "xp": 120,
+      "token": "EB74BC36",
+      "badges": 0,
+      "pokedexCount": 1,
+      "wildBattles": 0,
+      "trainerBattles": 3,
+      "pvpWins": 0,
+      "pvpLosses": 0,
+      "breedingCount": 0,
+      "title": "ACE TRAINER",
+      "favoriteMon": "PIKACHU",
+      "isBanned": false,
+      "createdAt": 1786264056,
+      "lastSeen": 1786268724,
+      "blackoutCount": 0
+    },
+    "62733": {
+      "trainerId": "62733",
+      "name": "BEPSI",
+      "spriteId": "SPRITE_BLUE",
+      "level": 1,
+      "xp": 0,
+      "token": "741E08CD",
+      "badges": 0,
+      "pokedexCount": 25,
+      "wildBattles": 0,
+      "trainerBattles": 0,
+      "pvpWins": 0,
+      "pvpLosses": 0,
+      "breedingCount": 0,
+      "title": "ACE TRAINER",
+      "favoriteMon": "PIKACHU",
+      "isBanned": false,
+      "createdAt": 1786264422,
+      "lastSeen": 1786264422,
+      "blackoutCount": 0
+    },
+    "7718": {
+      "trainerId": "7718",
+      "name": "Clover",
+      "spriteId": "SPRITE_BLUE",
+      "level": 2,
+      "xp": 140,
+      "token": "78D6E4B2",
+      "badges": 0,
+      "pokedexCount": 3,
+      "wildBattles": 0,
+      "trainerBattles": 1,
+      "pvpWins": 0,
+      "pvpLosses": 0,
+      "breedingCount": 0,
+      "title": "ACE TRAINER",
+      "favoriteMon": "PIKACHU",
+      "isBanned": false,
+      "createdAt": 1786266306,
+      "lastSeen": 1786266936,
+      "blackoutCount": 0
+    },
+    "60358": {
+      "trainerId": "60358",
+      "name": "Reen",
+      "spriteId": "SPRITE_GIRL",
+      "level": 8,
+      "xp": 1670,
+      "token": "2EBF8051",
+      "badges": 0,
+      "pokedexCount": 8,
+      "wildBattles": 0,
+      "trainerBattles": 33,
+      "pvpWins": 0,
+      "pvpLosses": 0,
+      "breedingCount": 0,
+      "title": "ACE TRAINER",
+      "favoriteMon": "PIKACHU",
+      "isBanned": false,
+      "createdAt": 1786283317,
+      "lastSeen": 1786289085,
+      "blackoutCount": 0
+    },
+    "116972": {
+      "trainerId": "116972",
+      "name": "BCD",
+      "spriteId": "SPRITE_BLUE",
+      "level": 2,
+      "xp": 80,
+      "token": "5AB0E1AF",
+      "badges": 0,
+      "pokedexCount": 2,
+      "wildBattles": 0,
+      "trainerBattles": 2,
+      "pvpWins": 0,
+      "pvpLosses": 0,
+      "breedingCount": 0,
+      "title": "ACE TRAINER",
+      "favoriteMon": "PIKACHU",
+      "isBanned": false,
+      "createdAt": 1786287136,
+      "lastSeen": 1786287296,
+      "blackoutCount": 0
+    },
+    "910086": {
+      "trainerId": "910086",
+      "name": "KIKI",
+      "spriteId": "SPRITE_COOLTRAINER_M",
+      "level": 1,
+      "xp": 0,
+      "token": "CA208CC8",
+      "badges": 0,
+      "pokedexCount": 0,
+      "wildBattles": 0,
+      "trainerBattles": 0,
+      "pvpWins": 0,
+      "pvpLosses": 0,
+      "breedingCount": 0,
+      "title": "ACE TRAINER",
+      "favoriteMon": "PIKACHU",
+      "isBanned": false,
+      "createdAt": 1786287416,
+      "lastSeen": 1786287416
+    },
+    "963682": {
+      "trainerId": "963682",
+      "name": "DATBICH",
+      "spriteId": "SPRITE_RED",
+      "level": 1,
+      "xp": 0,
+      "token": "D596B779",
+      "badges": 0,
+      "pokedexCount": 0,
+      "wildBattles": 0,
+      "trainerBattles": 0,
+      "pvpWins": 0,
+      "pvpLosses": 0,
+      "breedingCount": 0,
+      "title": "ACE TRAINER",
+      "favoriteMon": "PIKACHU",
+      "isBanned": false,
+      "createdAt": 1786287749,
+      "lastSeen": 1786287749
+    },
+    "254375": {
+      "trainerId": "254375",
+      "name": "D",
+      "spriteId": "SPRITE_ROCKET",
+      "level": 1,
+      "xp": 0,
+      "token": "3C96F0EA",
+      "badges": 0,
+      "pokedexCount": 0,
+      "wildBattles": 0,
+      "trainerBattles": 0,
+      "pvpWins": 0,
+      "pvpLosses": 0,
+      "breedingCount": 0,
+      "title": "ACE TRAINER",
+      "favoriteMon": "PIKACHU",
+      "isBanned": false,
+      "createdAt": 1786287760,
+      "lastSeen": 1786287760
+    },
+    "623685": {
+      "trainerId": "623685",
+      "name": "JOSHUA",
+      "spriteId": "SPRITE_WAITER",
+      "level": 1,
+      "xp": 0,
+      "token": "27548C13",
+      "badges": 0,
+      "pokedexCount": 0,
+      "wildBattles": 0,
+      "trainerBattles": 0,
+      "pvpWins": 0,
+      "pvpLosses": 0,
+      "breedingCount": 0,
+      "title": "ACE TRAINER",
+      "favoriteMon": "PIKACHU",
+      "isBanned": false,
+      "createdAt": 1786287877,
+      "lastSeen": 1786287877
+    },
+    "219893": {
+      "trainerId": "219893",
+      "name": "Dennis",
+      "spriteId": "SPRITE_BLUE",
+      "level": 1,
+      "xp": 0,
+      "token": "67AD7759",
+      "badges": 0,
+      "pokedexCount": 0,
+      "wildBattles": 0,
+      "trainerBattles": 0,
+      "pvpWins": 0,
+      "pvpLosses": 0,
+      "breedingCount": 0,
+      "title": "ACE TRAINER",
+      "favoriteMon": "PIKACHU",
+      "isBanned": false,
+      "createdAt": 1786287892,
+      "lastSeen": 1786287892
+    },
+    "877424": {
+      "trainerId": "877424",
+      "name": "SR.GEN",
+      "spriteId": "SPRITE_RED",
+      "level": 1,
+      "xp": 0,
+      "token": "D7062B00",
+      "badges": 0,
+      "pokedexCount": 0,
+      "wildBattles": 0,
+      "trainerBattles": 0,
+      "pvpWins": 0,
+      "pvpLosses": 0,
+      "breedingCount": 0,
+      "title": "ACE TRAINER",
+      "favoriteMon": "PIKACHU",
+      "isBanned": false,
+      "createdAt": 1786288032,
+      "lastSeen": 1786288032
+    },
+    "504082": {
+      "trainerId": "504082",
+      "name": "SR.GENE",
+      "spriteId": "SPRITE_RED",
+      "level": 1,
+      "xp": 0,
+      "token": "70F8DC3C",
+      "badges": 0,
+      "pokedexCount": 0,
+      "wildBattles": 0,
+      "trainerBattles": 0,
+      "pvpWins": 0,
+      "pvpLosses": 0,
+      "breedingCount": 0,
+      "title": "ACE TRAINER",
+      "favoriteMon": "PIKACHU",
+      "isBanned": false,
+      "createdAt": 1786288181,
+      "lastSeen": 1786288181
+    },
+    "286334": {
+      "trainerId": "286334",
+      "name": "Digi",
+      "spriteId": "SPRITE_COOLTRAINER_M",
+      "level": 1,
+      "xp": 0,
+      "token": "340942AA",
+      "badges": 0,
+      "pokedexCount": 0,
+      "wildBattles": 0,
+      "trainerBattles": 0,
+      "pvpWins": 0,
+      "pvpLosses": 0,
+      "breedingCount": 0,
+      "title": "ACE TRAINER",
+      "favoriteMon": "PIKACHU",
+      "isBanned": false,
+      "createdAt": 1786288689,
+      "lastSeen": 1786288689
+    },
+    "751436": {
+      "trainerId": "751436",
+      "name": "ABURRIT",
+      "spriteId": "SPRITE_RED",
+      "level": 1,
+      "xp": 0,
+      "token": "F74B1261",
+      "badges": 0,
+      "pokedexCount": 0,
+      "wildBattles": 0,
+      "trainerBattles": 0,
+      "pvpWins": 0,
+      "pvpLosses": 0,
+      "breedingCount": 0,
+      "title": "ACE TRAINER",
+      "favoriteMon": "PIKACHU",
+      "isBanned": false,
+      "createdAt": 1786288816,
+      "lastSeen": 1786288816
+    },
+    "906029": {
+      "trainerId": "906029",
+      "name": "Chronic",
+      "spriteId": "SPRITE_RED",
+      "level": 1,
+      "xp": 0,
+      "token": "1448CF41",
+      "badges": 0,
+      "pokedexCount": 0,
+      "wildBattles": 0,
+      "trainerBattles": 0,
+      "pvpWins": 0,
+      "pvpLosses": 0,
+      "breedingCount": 0,
+      "title": "ACE TRAINER",
+      "favoriteMon": "PIKACHU",
+      "isBanned": false,
+      "createdAt": 1786288892,
+      "lastSeen": 1786288892
+    },
+    "530268": {
+      "trainerId": "530268",
+      "name": "BCFFGHH",
+      "spriteId": "SPRITE_SAILOR",
+      "level": 1,
+      "xp": 0,
+      "token": "B2938A4E",
+      "badges": 0,
+      "pokedexCount": 0,
+      "wildBattles": 0,
+      "trainerBattles": 0,
+      "pvpWins": 0,
+      "pvpLosses": 0,
+      "breedingCount": 0,
+      "title": "ACE TRAINER",
+      "favoriteMon": "PIKACHU",
+      "isBanned": false,
+      "createdAt": 1786289178,
+      "lastSeen": 1786289178
     }
   },
   "chat": [
@@ -2451,34 +3308,450 @@
       "text": "HELLO EVERYONE!",
       "scope": "global",
       "time": 1786234940
+    },
+    {
+      "id": 43,
+      "trainerId": "45799",
+      "name": "RED",
+      "text": "HELLO EVERYONE!",
+      "scope": "global",
+      "time": 1786237479
+    },
+    {
+      "id": 44,
+      "trainerId": "5148",
+      "name": "NEKU",
+      "text": "HELLO EVERYONE!",
+      "scope": "global",
+      "time": 1786238203
+    },
+    {
+      "id": 45,
+      "trainerId": "45799",
+      "name": "Kaoz",
+      "text": "HELLO EVERYONE!",
+      "scope": "global",
+      "time": 1786239399
+    },
+    {
+      "id": 46,
+      "trainerId": "45799",
+      "name": "Kelly",
+      "text": "HELLO EVERYONE!",
+      "scope": "global",
+      "time": 1786243614
+    },
+    {
+      "id": 47,
+      "trainerId": "45799",
+      "name": "CHROX",
+      "text": "GG, WELL PLAYED!",
+      "scope": "global",
+      "time": 1786244548
+    },
+    {
+      "id": 48,
+      "trainerId": "45799",
+      "name": "CHROX",
+      "text": "GG, WELL PLAYED!",
+      "scope": "global",
+      "time": 1786245465
+    },
+    {
+      "id": 49,
+      "trainerId": "11531",
+      "name": "Kore",
+      "text": "HELLO EVERYONE!",
+      "scope": "global",
+      "time": 1786246752
+    },
+    {
+      "id": 50,
+      "trainerId": "11531",
+      "name": "PAC II",
+      "text": "HELLO EVERYONE!",
+      "scope": "global",
+      "time": 1786248752
+    },
+    {
+      "id": 51,
+      "trainerId": "11531",
+      "name": "HIPPO",
+      "text": "HELLO EVERYONE!",
+      "scope": "global",
+      "time": 1786263183
+    },
+    {
+      "id": 52,
+      "trainerId": "45799",
+      "name": "KAMAROO",
+      "text": "HELLO EVERYONE!",
+      "scope": "global",
+      "time": 1786263509
+    },
+    {
+      "id": 53,
+      "trainerId": "24551",
+      "name": "KAYLA96",
+      "text": "HELLO EVERYONE!",
+      "scope": "global",
+      "time": 1786264402
+    },
+    {
+      "id": 54,
+      "trainerId": "62733",
+      "name": "BEPSI",
+      "text": "HELLO EVERYONE!",
+      "scope": "global",
+      "time": 1786264503
+    },
+    {
+      "id": 55,
+      "trainerId": "45799",
+      "name": "<PK><MN>\u2642Dark",
+      "text": "HELLO EVERYONE!",
+      "scope": "global",
+      "time": 1786277958
+    },
+    {
+      "id": 56,
+      "trainerId": "38673",
+      "name": "Ocean",
+      "text": "HELLO EVERYONE!",
+      "scope": "global",
+      "time": 1786278322
+    },
+    {
+      "id": 57,
+      "trainerId": "23786",
+      "name": "Nikolis",
+      "text": "HELLO EVERYONE!",
+      "scope": "global",
+      "time": 1786280980
+    },
+    {
+      "id": 58,
+      "trainerId": "23786",
+      "name": "Sona",
+      "text": "HELLO EVERYONE!",
+      "scope": "global",
+      "time": 1786281467
+    },
+    {
+      "id": 59,
+      "trainerId": "116972",
+      "name": "BCD",
+      "text": "HELLO EVERYONE!",
+      "scope": "global",
+      "time": 1786287786
+    },
+    {
+      "id": 60,
+      "trainerId": "63884",
+      "name": "JOSHUA",
+      "text": "HELLO EVERYONE!",
+      "scope": "global",
+      "time": 1786287944
     }
   ],
   "banned_trainers": {},
   "parties": {
-    "party_1786235463_39106": {
-      "id": "party_1786235463_39106",
-      "leaderId": "39106",
-      "leaderName": "Jon",
-      "created": 1786235463,
+    "party_1786248839_39106": {
+      "id": "party_1786248839_39106",
+      "leaderId": "43326",
+      "leaderName": "WILLIAM",
+      "created": 1786248839,
       "members": {
+        "43326": {
+          "trainerId": "43326",
+          "name": "WILLIAM",
+          "level": 6,
+          "map": "VIRIDIAN_MART",
+          "x": 2,
+          "y": 6,
+          "spriteId": "SPRITE_YOUNGSTER",
+          "lastSeen": 1786277115
+        }
+      }
+    },
+    "party_1786251126_54389": {
+      "id": "party_1786251126_54389",
+      "leaderId": "54389",
+      "leaderName": "MINT",
+      "created": 1786251126,
+      "members": {
+        "54389": {
+          "trainerId": "54389",
+          "name": "MINT",
+          "level": 3,
+          "map": "VIRIDIAN_FOREST",
+          "x": 26,
+          "y": 33,
+          "spriteId": "SPRITE_RED",
+          "lastSeen": 1786251972
+        },
         "39106": {
           "trainerId": "39106",
-          "name": "Jon",
-          "level": 6,
-          "map": "PEWTER_CITY",
-          "x": 31,
-          "y": 24,
-          "spriteId": "SPRITE_OAK",
-          "lastSeen": 1786235511
+          "name": "KAPI-",
+          "level": 12,
+          "map": "OAKS_LAB",
+          "x": 5,
+          "y": 10,
+          "spriteId": "SPRITE_BLUE",
+          "lastSeen": 1786287118
+        }
+      }
+    },
+    "party_1786256040_26540": {
+      "id": "party_1786256040_26540",
+      "leaderId": "26540",
+      "leaderName": "Albert",
+      "created": 1786256040,
+      "members": {
+        "26540": {
+          "trainerId": "26540",
+          "name": "Albert",
+          "level": 1,
+          "map": "OAKS_LAB",
+          "x": 5,
+          "y": 3,
+          "spriteId": "SPRITE_RED",
+          "lastSeen": 1786256316
+        },
+        "44056": {
+          "trainerId": "44056",
+          "name": "MAKOTO",
+          "level": 1,
+          "map": "OAKS_LAB",
+          "x": 5,
+          "y": 6,
+          "spriteId": "SPRITE_BLUE",
+          "lastSeen": 1786256424
+        }
+      }
+    },
+    "party_1786267925_49363": {
+      "id": "party_1786267925_49363",
+      "leaderId": "49363",
+      "leaderName": "BEAT",
+      "created": 1786267925,
+      "members": {
+        "49363": {
+          "trainerId": "49363",
+          "name": "BEAT",
+          "level": 1,
+          "map": "REDS_HOUSE_2F",
+          "x": 3,
+          "y": 6,
+          "spriteId": "SPRITE_RED",
+          "lastSeen": 1786289199
+        }
+      }
+    },
+    "party_1786268406_23255": {
+      "id": "party_1786268406_23255",
+      "leaderId": "23255",
+      "leaderName": "Tskch",
+      "created": 1786268406,
+      "members": {
+        "23255": {
+          "trainerId": "23255",
+          "name": "Tskch",
+          "level": 15,
+          "map": "OAKS_LAB",
+          "x": 6,
+          "y": 5,
+          "spriteId": "SPRITE_COOLTRAINER_M",
+          "lastSeen": 1786268560
+        }
+      }
+    },
+    "party_1786272314_9444": {
+      "id": "party_1786272314_9444",
+      "leaderId": "9444",
+      "leaderName": "Erik",
+      "created": 1786272314,
+      "members": {
+        "9444": {
+          "trainerId": "9444",
+          "name": "Erik",
+          "level": 1,
+          "map": "PALLET_TOWN",
+          "x": 9,
+          "y": 12,
+          "spriteId": "SPRITE_ROCKET",
+          "lastSeen": 1786288728
+        }
+      }
+    },
+    "party_1786278741_11531": {
+      "id": "party_1786278741_11531",
+      "leaderId": "11531",
+      "leaderName": "ASH",
+      "created": 1786278741,
+      "members": {
+        "11531": {
+          "trainerId": "11531",
+          "name": "ASH",
+          "level": 3,
+          "map": "ROUTE_24",
+          "x": 11,
+          "y": 30,
+          "spriteId": "SPRITE_RED",
+          "lastSeen": 1786282011
+        }
+      }
+    },
+    "party_1786281393_23786": {
+      "id": "party_1786281393_23786",
+      "leaderId": "23786",
+      "leaderName": "Sona",
+      "created": 1786281393,
+      "members": {
+        "23786": {
+          "trainerId": "23786",
+          "name": "Sona",
+          "level": 2,
+          "map": "CERULEAN_CITY",
+          "x": 11,
+          "y": 20,
+          "spriteId": "SPRITE_RED",
+          "lastSeen": 1786282173
+        }
+      }
+    },
+    "party_1786282351_46228": {
+      "id": "party_1786282351_46228",
+      "leaderId": "46228",
+      "leaderName": "AB",
+      "created": 1786282351,
+      "members": {
+        "46228": {
+          "trainerId": "46228",
+          "name": "AB",
+          "level": 14,
+          "map": "OAKS_LAB",
+          "x": 4,
+          "y": 6,
+          "spriteId": "SPRITE_GIRL",
+          "lastSeen": 1786282469
+        }
+      }
+    },
+    "party_1786283339_13839": {
+      "id": "party_1786283339_13839",
+      "leaderId": "13839",
+      "leaderName": "Adward",
+      "created": 1786283339,
+      "members": {
+        "13839": {
+          "trainerId": "13839",
+          "name": "Adward",
+          "level": 15,
+          "map": "VIRIDIAN_FOREST",
+          "x": 1,
+          "y": 9,
+          "spriteId": "SPRITE_RED",
+          "lastSeen": 1786289236
+        },
+        "60358": {
+          "trainerId": "60358",
+          "name": "Reen",
+          "level": 8,
+          "map": "VIRIDIAN_FOREST",
+          "x": 26,
+          "y": 19,
+          "spriteId": "SPRITE_GIRL",
+          "lastSeen": 1786289097
+        }
+      }
+    },
+    "party_1786287760_63884": {
+      "id": "party_1786287760_63884",
+      "leaderId": "63884",
+      "leaderName": "DATBICH",
+      "created": 1786287760,
+      "members": {
+        "63884": {
+          "trainerId": "63884",
+          "name": "DATBICH",
+          "level": 1,
+          "map": "OAKS_LAB",
+          "x": 5,
+          "y": 4,
+          "spriteId": "SPRITE_RED",
+          "lastSeen": 1786287948
+        },
+        "38673": {
+          "trainerId": "38673",
+          "name": "D",
+          "level": 1,
+          "map": "OAKS_LAB",
+          "x": 5,
+          "y": 4,
+          "spriteId": "SPRITE_ROCKET",
+          "lastSeen": 1786289191
+        }
+      }
+    },
+    "party_1786288095_116972": {
+      "id": "party_1786288095_116972",
+      "leaderId": "116972",
+      "leaderName": "BCD",
+      "created": 1786288095,
+      "members": {
+        "116972": {
+          "trainerId": "116972",
+          "name": "BCD",
+          "level": 2,
+          "map": "REDS_HOUSE_2F",
+          "x": 3,
+          "y": 3,
+          "spriteId": "SPRITE_BLUE",
+          "lastSeen": 1786288603
+        }
+      }
+    },
+    "party_1786288192_45799": {
+      "id": "party_1786288192_45799",
+      "leaderId": "45799",
+      "leaderName": "SR.GENE",
+      "created": 1786288192,
+      "members": {
+        "45799": {
+          "trainerId": "45799",
+          "name": "SR.GENE",
+          "level": 2,
+          "map": "REDS_HOUSE_2F",
+          "x": 3,
+          "y": 6,
+          "spriteId": "SPRITE_RED",
+          "lastSeen": 1786289006
         }
       }
     }
   },
   "player_parties": {
-    "39106": "party_1786235463_39106"
+    "43326": "party_1786248839_39106",
+    "54389": "party_1786251126_54389",
+    "39106": "party_1786251126_54389",
+    "26540": "party_1786256040_26540",
+    "44056": "party_1786256040_26540",
+    "11531": "party_1786278741_11531",
+    "45799": "party_1786288192_45799",
+    "49363": "party_1786267925_49363",
+    "23255": "party_1786268406_23255",
+    "9444": "party_1786272314_9444",
+    "23786": "party_1786281393_23786",
+    "46228": "party_1786282351_46228",
+    "13839": "party_1786283339_13839",
+    "60358": "party_1786283339_13839",
+    "63884": "party_1786287760_63884",
+    "38673": "party_1786287760_63884",
+    "116972": "party_1786288095_116972"
   },
   "pending_party_invites": {},
   "party_messages": {},
   "party_xp_events": {},
-  "next_id": 1088
+  "next_id": 1090
 }

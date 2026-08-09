@@ -1,7 +1,7 @@
 {
   "id": "gen1online-gamecorner",
   "name": "Gen 1 Online - Game Corner Edition",
-  "version": "0.3.4.1",
+  "version": "0.3.4.2",
   "entry": "main.lua",
   "author": "Gamecorner33 (with AI Assistant Antigravity)",
   "description": "Integrated Gen 1 Online MMO, 24/7 GTS Trading, PVP Battles, Casino Lounge, and Live Multiplayer Online Texas Hold'em.",
