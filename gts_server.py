@@ -30,7 +30,7 @@ PORT = int(os.environ.get("PORT", 7779))
 DB_FILE = os.environ.get("GTS_DB_PATH", os.path.join(os.path.dirname(__file__), "gts_database.json"))
 BACKUP_DB_FILE = os.environ.get("GTS_BACKUP_PATH", os.path.join(os.path.dirname(__file__), "players_backup.json"))
 
-MOD_VERSION = "0.3.4.2"
+MOD_VERSION = "0.3.4.3"
 
 LISTING_TTL_SECONDS = 30 * 86400
 CLAIM_TTL_SECONDS = 60 * 86400
@@ -78,6 +78,8 @@ db = {
     "pending_party_invites": {}, # targetTrainerId -> { fromId, fromName, partyId, timestamp }
     "party_messages": {},      # partyId -> [ { fromId, fromName, text, timestamp } ]
     "party_xp_events": {},     # trainerId -> [ { fromName, xp, reason, timestamp } ]
+    "battle_log": [],           # last 50 PvP battle results [{ winnerId, winnerName, loserId, loserName, time }]
+    "quest_log": [],            # last 50 quest events [{ trainerId, trainerName, questId, questTitle, event, time }]
     "next_id": 1001
 }
 
@@ -193,6 +195,29 @@ def add_receipt(text):
         "time": int(time.time())
     })
     db["history"] = db["history"][:50]
+
+def add_battle_record(winner_id, winner_name, loser_id, loser_name):
+    """Log a PvP battle result (mirrors trade receipt pattern)."""
+    db.setdefault("battle_log", []).insert(0, {
+        "winnerId": str(winner_id),
+        "winnerName": winner_name,
+        "loserId": str(loser_id),
+        "loserName": loser_name,
+        "time": int(time.time())
+    })
+    db["battle_log"] = db["battle_log"][:50]
+
+def add_quest_event(trainer_id, trainer_name, quest_id, quest_title, event_type):
+    """Log a quest event (ACCEPTED, COMPLETED, ITEM_PICKUP). Mirrors battle_log pattern."""
+    db.setdefault("quest_log", []).insert(0, {
+        "trainerId": str(trainer_id),
+        "trainerName": trainer_name,
+        "questId": int(quest_id),
+        "questTitle": quest_title,
+        "event": event_type,
+        "time": int(time.time())
+    })
+    db["quest_log"] = db["quest_log"][:50]
 
 def check_rate_limit(ip):
     now = time.time()
@@ -797,6 +822,348 @@ holdem_tables = {
     "table_500": HoldemTable("table_500", "Champion's Table (500c)", 500)
 }
 
+# =============================================================================
+# COOPERATIVE QUEST SYSTEM & QUEST MANAGER (Server-Authoritative)
+# =============================================================================
+
+QUEST_DEFINITIONS = {
+    1: {
+        "id": 1,
+        "title": "Magnemite Repair",
+        "type": "coop",
+        "description": "Felix in Pallet Town needs two rare parts to fix a damaged Magnemite. Search the abandoned Kanto Power Plant.",
+        "npc": "Fixer Felix",
+        "location": "PALLET_TOWN",
+        "items": {
+            "part_a": "MAGNET_COIL",
+            "part_b": "CONDUIT_LENS"
+        },
+        "item_names": {
+            "MAGNET_COIL": "Magnetized Coil",
+            "CONDUIT_LENS": "Conduit Lens"
+        },
+        "item_locations": {
+            "MAGNET_COIL": "Power Plant Upper Floor",
+            "CONDUIT_LENS": "Power Plant Basement"
+        },
+        "reward": {
+            "species": "MAGNETON",
+            "level": 30,
+            "xp": 1000
+        }
+    },
+    2: {
+        "id": 2,
+        "title": "Bye Bye Butterfree",
+        "type": "solo",
+        "description": "Bug Catcher BugHead in Viridian Forest needs help raising his Caterpie into a Butterfree.",
+        "npc": "Bug Catcher BugHead",
+        "location": "VIRIDIAN_FOREST",
+        "reward": {
+            "species": "CATERPIE",
+            "nickname": "BUGSY",
+            "level": 5,
+            "maxStats": True,
+            "xp": 1000
+        }
+    }
+}
+
+class QuestManager:
+    @staticmethod
+    def get_player_quests(trainer_id):
+        trainer_id = str(trainer_id)
+        player_quests = db.setdefault("player_quests", {}).setdefault(trainer_id, {})
+        
+        # Ensure Quest #1 status exists
+        if 1 not in player_quests and "1" not in player_quests:
+            player_quests["1"] = {
+                "id": 1,
+                "title": QUEST_DEFINITIONS[1]["title"],
+                "state": 0, # 0 = NotStarted, 1 = InProgress, 2 = Completed
+                "step_flags": {
+                    "part_a_obtained": False,
+                    "part_b_obtained": False,
+                    "felix_talked": False
+                },
+                "startedAt": 0,
+                "completedAt": 0
+            }
+
+        # Ensure Quest #2 status exists
+        if 2 not in player_quests and "2" not in player_quests:
+            player_quests["2"] = {
+                "id": 2,
+                "title": QUEST_DEFINITIONS[2]["title"],
+                "state": 0,
+                "step_flags": {
+                    "caterpie_received": False,
+                    "completed": False
+                },
+                "startedAt": 0,
+                "completedAt": 0
+            }
+        
+        # Normalize keys as strings for JSON
+        res = {}
+        for qid, qdata in player_quests.items():
+            res[str(qid)] = qdata
+        return res
+
+    @staticmethod
+    def get_quest(trainer_id, quest_id):
+        quests = QuestManager.get_player_quests(trainer_id)
+        return quests.get(str(quest_id))
+
+    @staticmethod
+    def accept_quest(trainer_id, quest_id):
+        trainer_id = str(trainer_id)
+        quest_id = int(quest_id)
+        if quest_id not in QUEST_DEFINITIONS:
+            return False, "UNKNOWN_QUEST", "Quest does not exist."
+
+        q = QuestManager.get_quest(trainer_id, quest_id)
+        if q and q.get("state") == 2:
+            return False, "ALREADY_COMPLETED", "You have already completed this quest."
+
+        now = int(time.time())
+        flags = {
+            "caterpie_received": True,
+            "completed": False
+        } if quest_id == 2 else {
+            "part_a_obtained": False,
+            "part_b_obtained": False,
+            "felix_talked": True
+        }
+
+        q_entry = {
+            "id": quest_id,
+            "title": QUEST_DEFINITIONS[quest_id]["title"],
+            "state": 1, # InProgress
+            "step_flags": flags,
+            "startedAt": now,
+            "completedAt": 0
+        }
+        db.setdefault("player_quests", {}).setdefault(trainer_id, {})[str(quest_id)] = q_entry
+        save_db()
+        trainer_name = db.get("accounts", {}).get(trainer_id, {}).get("name", "TRAINER")
+        add_quest_event(trainer_id, trainer_name, quest_id, QUEST_DEFINITIONS[quest_id]["title"], "ACCEPTED")
+        add_receipt(f"{trainer_name} ACCEPTED QUEST: {QUEST_DEFINITIONS[quest_id]['title']}")
+        return True, "SUCCESS", q_entry
+
+    @staticmethod
+    def pickup_item(trainer_id, quest_id, item_id):
+        trainer_id = str(trainer_id)
+        quest_id = int(quest_id)
+        item_id = str(item_id).upper()
+
+        if quest_id not in QUEST_DEFINITIONS:
+            return False, "UNKNOWN_QUEST", "Unknown quest."
+
+        q = QuestManager.get_quest(trainer_id, quest_id)
+        if not q or q.get("state") != 1:
+            return False, "QUEST_NOT_ACTIVE", "A strange electronic component is lodged here. You don't know what it's for."
+
+        flags = q.setdefault("step_flags", {})
+
+        if quest_id == 1:
+            if item_id == "MAGNET_COIL":
+                if flags.get("part_b_obtained"):
+                    # CRITICAL BLOCKING RULE: Player already has Part B, cannot pick up Part A!
+                    return False, "BLOCKED_COOP", "You can't carry both – it's too heavy to repair alone!"
+                if flags.get("part_a_obtained"):
+                    return False, "ALREADY_PICKED", "The container is empty. You already retrieved this part."
+                flags["part_a_obtained"] = True
+                save_db()
+                trainer_name = db.get("accounts", {}).get(trainer_id, {}).get("name", "TRAINER")
+                add_quest_event(trainer_id, trainer_name, quest_id, QUEST_DEFINITIONS[quest_id]["title"], "PICKED_UP_COIL")
+                return True, "OBTAINED", {
+                    "item": "MAGNET_COIL",
+                    "itemName": "Magnetized Coil",
+                    "quest": q,
+                    "message": "Obtained Magnetized Coil!"
+                }
+
+            elif item_id == "CONDUIT_LENS":
+                if flags.get("part_a_obtained"):
+                    # CRITICAL BLOCKING RULE: Player already has Part A, cannot pick up Part B!
+                    return False, "BLOCKED_COOP", "You can't carry both – it's too heavy to repair alone!"
+                if flags.get("part_b_obtained"):
+                    return False, "ALREADY_PICKED", "The container is empty. You already retrieved this part."
+                flags["part_b_obtained"] = True
+                save_db()
+                trainer_name = db.get("accounts", {}).get(trainer_id, {}).get("name", "TRAINER")
+                add_quest_event(trainer_id, trainer_name, quest_id, QUEST_DEFINITIONS[quest_id]["title"], "PICKED_UP_LENS")
+                return True, "OBTAINED", {
+                    "item": "CONDUIT_LENS",
+                    "itemName": "Conduit Lens",
+                    "quest": q,
+                    "message": "Obtained Conduit Lens!"
+                }
+            else:
+                return False, "INVALID_ITEM", "Not a recognized quest item."
+
+        return False, "INVALID_QUEST", "Invalid quest logic."
+
+    @staticmethod
+    def turn_in_quest(trainer_id, quest_id, p1_inventory=None, p2_inventory=None):
+        trainer_id = str(trainer_id)
+        quest_id = int(quest_id)
+        now = int(time.time())
+
+        q = QuestManager.get_quest(trainer_id, quest_id)
+        if not q:
+            return False, "NO_QUEST", "You have not started this quest."
+        if q.get("state") == 2:
+            return False, "ALREADY_DONE", "You have already completed this quest!"
+
+        # Handle Quest #2 (Bye Bye Butterfree - Solo Quest)
+        if quest_id == 2:
+            q["state"] = 2
+            q["completedAt"] = now
+            q.setdefault("step_flags", {})["completed"] = True
+
+            # Award 1,000 XP
+            if trainer_id in db.get("accounts", {}):
+                cur_xp = db["accounts"][trainer_id].get("xp", 0) + 1000
+                new_lvl = calculate_level_from_xp(cur_xp)
+                db["accounts"][trainer_id]["xp"] = cur_xp
+                db["accounts"][trainer_id]["level"] = new_lvl
+
+            p_name = db.get("accounts", {}).get(trainer_id, {}).get("name", "TRAINER")
+            add_quest_event(trainer_id, p_name, 2, QUEST_DEFINITIONS[2]["title"], "COMPLETED")
+            add_receipt(f"{p_name} COMPLETED QUEST: Bye Bye Butterfree!")
+
+            save_db()
+
+            return True, "COMPLETED", {
+                "questId": 2,
+                "rewardMon": {
+                    "species": "CATERPIE",
+                    "nickname": "BUGSY",
+                    "level": 5,
+                    "maxStats": True
+                },
+                "rewardXp": 1000,
+                "message": "Bye Bye Butterfree! Take good care of BUGSY!"
+            }
+
+        # 1. Party Requirement Validation
+        party_id = db.get("player_parties", {}).get(trainer_id)
+        if not party_id or party_id not in db.get("parties", {}):
+            return False, "NEED_PARTY", "You can't do this alone! Bring a partner!"
+
+        party = db["parties"][party_id]
+        members = list(party.get("members", {}).keys())
+        if len(members) < 2:
+            return False, "NEED_PARTNER", "You can't do this alone! Bring a partner!"
+
+        # Find the partner in party
+        partner_id = None
+        for mid in members:
+            if str(mid) != trainer_id:
+                partner_id = str(mid)
+                break
+
+        if not partner_id:
+            return False, "NEED_PARTNER", "You can't do this alone! Bring a partner!"
+
+        p1_inv = p1_inventory or {}
+        p2_inv = p2_inventory or {}
+
+        # Also inspect partner's step flags if inventory is omitted from network payload
+        p1_q = QuestManager.get_quest(trainer_id, quest_id)
+        p2_q = QuestManager.get_quest(partner_id, quest_id)
+
+        p1_flags = p1_q.get("step_flags", {}) if p1_q else {}
+        p2_flags = p2_q.get("step_flags", {}) if p2_q else {}
+
+        has_p1_coil = (p1_inv.get("MAGNET_COIL", 0) > 0) or p1_flags.get("part_a_obtained", False)
+        has_p1_lens = (p1_inv.get("CONDUIT_LENS", 0) > 0) or p1_flags.get("part_b_obtained", False)
+
+        has_p2_coil = (p2_inv.get("MAGNET_COIL", 0) > 0) or p2_flags.get("part_a_obtained", False)
+        has_p2_lens = (p2_inv.get("CONDUIT_LENS", 0) > 0) or p2_flags.get("part_b_obtained", False)
+
+        valid_coop_split = (has_p1_coil and has_p2_lens) or (has_p1_lens and has_p2_coil)
+
+        if not valid_coop_split:
+            total_parts = (1 if (has_p1_coil or has_p2_coil) else 0) + (1 if (has_p1_lens or has_p2_lens) else 0)
+            if total_parts == 0:
+                return False, "NO_PARTS", "Did you get the parts? You both need to be here, and you need one part each!"
+            elif total_parts == 1:
+                return False, "ONE_PART", "I see one part, but you need the other. Split up and cover more ground!"
+            else:
+                return False, "NOT_SPLIT", "You each need to carry one part! Work together as a team!"
+
+        # 2. Complete the quest for BOTH players
+        p1_q["state"] = 2
+        p1_q["completedAt"] = now
+        p1_q.setdefault("step_flags", {})["completed"] = True
+
+        p2_q["state"] = 2
+        p2_q["completedAt"] = now
+        p2_q.setdefault("step_flags", {})["completed"] = True
+
+        # 3. Award 1,000 XP to both trainers
+        def award_xp(tid, amount):
+            if tid in db.get("accounts", {}):
+                cur_xp = db["accounts"][tid].get("xp", 0) + amount
+                new_lvl = calculate_level_from_xp(cur_xp)
+                db["accounts"][tid]["xp"] = cur_xp
+                db["accounts"][tid]["level"] = new_lvl
+            if tid in db.get("profiles", {}):
+                cur_xp = db["profiles"][tid].get("xp", 0) + amount
+                new_lvl = calculate_level_from_xp(cur_xp)
+                db["profiles"][tid]["xp"] = cur_xp
+                db["profiles"][tid]["level"] = new_lvl
+
+        award_xp(trainer_id, 1000)
+        award_xp(partner_id, 1000)
+
+        # 4. Award Level 30 Magneton
+        reward_mon = {
+            "species": "MAGNETON",
+            "level": 30,
+            "nickname": "MAGNETON",
+            "moves": [
+                {"id": "THUNDERSHOCK", "pp": 30},
+                {"id": "SUPERSONIC", "pp": 20},
+                {"id": "SONICBOOM", "pp": 20}
+            ]
+        }
+
+        # 5. Broadcast announcement
+        broadcast_msg = {
+            "id": len(db.get("chat", [])) + 1,
+            "trainerId": "0",
+            "name": "SYSTEM",
+            "text": "The swarm has arrived! Magnemites fused into Magneton!",
+            "scope": "global",
+            "time": now
+        }
+        db.setdefault("chat", []).append(broadcast_msg)
+
+        save_db()
+
+        # Log quest completion events for both players
+        p1_name = db.get("accounts", {}).get(trainer_id, {}).get("name", "TRAINER")
+        p2_name = db.get("accounts", {}).get(partner_id, {}).get("name", "TRAINER")
+        quest_title = QUEST_DEFINITIONS[quest_id]["title"]
+        add_quest_event(trainer_id, p1_name, quest_id, quest_title, "COMPLETED")
+        add_quest_event(partner_id, p2_name, quest_id, quest_title, "COMPLETED")
+        add_receipt(f"{p1_name} & {p2_name} COMPLETED QUEST: {quest_title}!")
+
+        return True, "COMPLETED", {
+            "questId": quest_id,
+            "rewardMon": reward_mon,
+            "rewardXp": 1000,
+            "partnerId": partner_id,
+            "removeItem": "MAGNET_COIL" if has_p1_coil else "CONDUIT_LENS",
+            "partnerRemoveItem": "CONDUIT_LENS" if has_p1_coil else "MAGNET_COIL",
+            "message": "Thanks to you two, this Magnemite is thriving! Look – it attracted a swarm! Here are two Magneton for your trouble!"
+        }
+
+
 class GTSHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         return
@@ -1023,6 +1390,70 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 "success": True,
                 "total_players": len(valid_accounts),
                 "leaderboard": top_leaderboard
+            })
+        elif path_only.startswith("/battles/log"):
+            battle_log = db.get("battle_log", [])[:50]
+            self._send_json({
+                "success": True,
+                "battles": battle_log,
+                "total": len(battle_log)
+            })
+        elif path_only.startswith("/quests/log"):
+            # Build a server-wide quest progress summary
+            all_player_quests = db.get("player_quests", {})
+            quest_log_events = db.get("quest_log", [])[:50]
+
+            # Aggregate counts per quest
+            quest_summary = {}
+            for qid_str, qdef in QUEST_DEFINITIONS.items():
+                qid = str(qid_str)
+                quest_summary[qid] = {
+                    "title": qdef["title"],
+                    "not_started": 0,
+                    "in_progress": 0,
+                    "completed": 0,
+                    "players": []
+                }
+
+            for tid, quests in all_player_quests.items():
+                account = db.get("accounts", {}).get(str(tid), {})
+                player_name = account.get("name", db.get("profiles", {}).get(str(tid), {}).get("name", "TRAINER"))
+                for qid, qdata in quests.items():
+                    qid_str = str(qid)
+                    state = qdata.get("state", 0)
+                    flags = qdata.get("step_flags", {})
+
+                    if qid_str not in quest_summary:
+                        quest_summary[qid_str] = {
+                            "title": qdata.get("title", f"Quest #{qid_str}"),
+                            "not_started": 0,
+                            "in_progress": 0,
+                            "completed": 0,
+                            "players": []
+                        }
+
+                    if state == 0:
+                        quest_summary[qid_str]["not_started"] += 1
+                    elif state == 1:
+                        quest_summary[qid_str]["in_progress"] += 1
+                    elif state == 2:
+                        quest_summary[qid_str]["completed"] += 1
+
+                    quest_summary[qid_str]["players"].append({
+                        "trainerId": str(tid),
+                        "name": player_name,
+                        "state": state,
+                        "stateLabel": ["NOT_STARTED", "IN_PROGRESS", "COMPLETED"][min(state, 2)],
+                        "flags": flags,
+                        "startedAt": qdata.get("startedAt", 0),
+                        "completedAt": qdata.get("completedAt", 0)
+                    })
+
+            self._send_json({
+                "success": True,
+                "quests": quest_summary,
+                "recent_events": quest_log_events,
+                "total_players_with_quests": len(all_player_quests)
             })
         else:
             self._send_json({"error": "Endpoint not found"}, status=404)
@@ -1323,6 +1754,10 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 account["pokedexCount"] = req.get("pokedexCount", account.get("pokedexCount", 0) + 1)
             elif xp_type == "pvp_win":
                 account["pvpWins"] = account.get("pvpWins", 0) + 1
+                opp_name = req.get("opponentName", "TRAINER")
+                opp_id = str(req.get("opponentId", "0"))
+                add_battle_record(trainer_id, account.get("name", "TRAINER"), opp_id, opp_name)
+                add_receipt(f"{account.get('name', 'TRAINER')} DEFEATED {opp_name} IN PVP!")
             elif xp_type == "pvp_loss":
                 account["pvpLosses"] = account.get("pvpLosses", 0) + 1
             elif xp_type == "breeding":
@@ -1890,6 +2325,42 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 self._send_json({"success": ok, "message": msg, "state": st})
             else:
                 self._send_json({"success": False, "error": "Table not found"}, status=404)
+
+                # 10. Cooperative Quest System API
+        elif action == "quest_get":
+            trainer_id = str(req.get("trainerId", "0"))
+            quests = QuestManager.get_player_quests(trainer_id)
+            self._send_json({"success": True, "quests": quests})
+
+        elif action == "quest_accept":
+            trainer_id = str(req.get("trainerId", "0"))
+            quest_id = int(req.get("questId", 1))
+            ok, err, data = QuestManager.accept_quest(trainer_id, quest_id)
+            if ok:
+                self._send_json({"success": True, "quest": data})
+            else:
+                self._send_json({"success": False, "error": err, "message": data}, status=400)
+
+        elif action == "quest_pickup":
+            trainer_id = str(req.get("trainerId", "0"))
+            quest_id = int(req.get("questId", 1))
+            item_id = str(req.get("itemId", ""))
+            ok, err, data = QuestManager.pickup_item(trainer_id, quest_id, item_id)
+            if ok:
+                self._send_json({"success": True, "data": data})
+            else:
+                self._send_json({"success": False, "error": err, "message": data}, status=400)
+
+        elif action == "quest_turn_in":
+            trainer_id = str(req.get("trainerId", "0"))
+            quest_id = int(req.get("questId", 1))
+            p1_inv = req.get("p1Inventory", {})
+            p2_inv = req.get("p2Inventory", {})
+            ok, err, data = QuestManager.turn_in_quest(trainer_id, quest_id, p1_inv, p2_inv)
+            if ok:
+                self._send_json({"success": True, "data": data})
+            else:
+                self._send_json({"success": False, "error": err, "message": data}, status=400)
 
         else:
             self._send_json({"error": "Unknown action"}, status=400)

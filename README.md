@@ -1,17 +1,43 @@
-# Gen1Online Game Corner - Multiplayer MMO, GTS, Casino Lounge & Online Texas Hold'em
+# Gen1Online Game Corner - Multiplayer MMO, GTS, Casino Lounge & Online Quests
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Mod Version: v0.3.3](https://img.shields.io/badge/version-0.3.3-green.svg)](manifest.json)
+[![Mod Version: v0.3.4.3](https://img.shields.io/badge/version-0.3.4.3-green.svg)](manifest.json)
 
-**Gen1Online Game Corner** brings the best of multiplayer Pokémon and high-stakes casino entertainment together in *Pokémon Gen 1 Recomp*.
+**Gen1Online Game Corner** brings the ultimate multiplayer Pokémon MMO experience together with cooperative quests, persistent progression, and high-stakes casino entertainment in *Pokémon Gen 1 Recomp*.
 
-It combines seamless real-time overworld MMO co-op, custom character avatars, persistent leveling (Level 1–100), authentic Link Trading & PVP battles, and a 24/7 persistent **Global Trade Station (GTS)** with the expanded **Celadon Casino Lounge**, featuring **Blackjack**, **Crash Multiplier**, **Tube Flyer**, **Prize Case**, **Pawn Broker**, and **Live Multiplayer Online Texas Hold'em Poker**!
+It combines seamless real-time overworld MMO co-op, custom character avatars, persistent leveling (Level 1–100), authentic Link Trading & PVP battles, cooperative quest storylines, and a 24/7 persistent **Global Trade Station (GTS)** with the expanded **Celadon Casino Lounge**, featuring **Blackjack**, **Crash Multiplier**, **Tube Flyer**, **Prize Case**, **Pawn Broker**, and **Live Multiplayer Online Texas Hold'em Poker**!
 
 ---
 
 ## 🌟 Key Features
 
-### 🃏 1. Live Multiplayer Online Texas Hold'em & Casino Lounge
+### 📜 1. Server-Authoritative Cooperative Quests ("Magnemite Repair")
+- **Debut Co-op Quest — "Magnemite Repair"**:
+  - **Location**: Pallet Town (NPC **Fixer Felix**) & Kanto Power Plant.
+  - **Cooperative Mechanics**: Two trainers must form a **Party** and split up to recover two specialized parts:
+    - **Item A ("Magnetized Coil")**: Located on the upper floor of the Power Plant.
+    - **Item B ("Conduit Lens")**: Located in the Power Plant basement.
+  - **Server-Authoritative Mutual Exclusion Blocker**:
+    - Picking up Item A permanently flags your character and blocks you from picking up Item B (*"You can't carry both – it's too heavy to repair alone!"*), requiring you to coordinate and split up with a partner.
+  - **Cooperative Turn-In & Rewards**:
+    - Return to Felix with your partner holding the other part to repair the Magnemite.
+    - **Rewards**: **Level 30 Magneton** added to both players' parties/boxes + **1,000 MMO XP** to both trainers!
+    - Server broadcasts a celebration message: *"The swarm has arrived! Magnemites fused into Magneton!"*
+- **Two-Tier Scrollable Quest Log UI**:
+  - Access via Start Menu → **`QUEST`**.
+  - **Tier 1 (Quest List)**: Scrollable list of active, completed, and available quests with status tags (`[NEW]`, `[ACTV]`, `[DONE]`).
+  - **Tier 2 (Quest Details)**: Clean 18-column card displaying dynamic objective checkboxes (`[X]` / `[ ]`), rewards, and full story lore on pressing **`SELECT`**.
+
+---
+
+### 👥 2. Cooperative Party System & Shared XP
+- **Party System (Up to 4 Players)**: Create a party, invite nearby trainers, view live party member maps, coordinates, and levels.
+- **100% Shared XP**: All MMO experience gained from wild battles, trainer victories, catches, and quests is shared in real-time across all party members.
+- **Teammate Warp**: Warp directly to your party members across Kanto.
+
+---
+
+### 🃏 3. Live Multiplayer Online Texas Hold'em & Casino Lounge
 - **Online Multiplayer Poker Tables**: Join 2-to-6 seat live tables with other connected trainers (`Rookie 10`, `Casino 50`, `High Roller 100`, `Champion 500`).
 - **Real-Time Betting Engine**: Small & Big Blinds, multi-round betting (`Pre-Flop` $\rightarrow$ `Flop` $\rightarrow$ `Turn` $\rightarrow$ `River` $\rightarrow$ `Showdown`), 7-card best-hand evaluation, and tie-split pot calculation.
 - **Solo Practice Mode**: Instant solo practice against the house dealer.
@@ -25,18 +51,19 @@ It combines seamless real-time overworld MMO co-op, custom character avatars, pe
 
 ---
 
-### 🌐 2. Streamlined "Connect to Server" & Character Setup
+### 🌐 4. Streamlined "Connect to Server" & Character Setup
 - **Single-Click Start Menu**: Press **`START`** → Select **`CONNECT TO SERVER`**.
 - **Automatic Device Save Detection**: Loads your recovery token, level, and XP progression automatically.
 - **Authentic Vanilla Naming Screen**: Classic Game Boy letter-grid naming screen.
 - **Character Avatar Customization**: 17 walkable character sprites (`RED`, `BLUE`, `LEAF / GIRL`, `PROF. OAK`, `COOLTRAINER M`, `COOLTRAINER F`, `TEAM ROCKET`, `LASS`, `YOUNGSTER`, `BLACKBELT`, `SUPER NERD`, `HIKER`, `BEAUTY`, `BUG CATCHER`, `SWIMMER`, `SAILOR`, `GENTLEMAN`).
-- **Secure Recovery Token**: 8-character token stored safely to restore your profile on any device.
+- **Dedicated Dual-Save Architecture**: Online saves write strictly to `save_online.lua`, preserving offline `save.lua` data completely untouched.
 
 ---
 
-### 📈 3. Player Leveling System (Level 1 to 100)
+### 📈 5. Player Leveling System (Level 1 to 100)
 - **XP Progression Curve**: Dynamic leveling curve (`XP_REQ = math.floor(50 * ((lvl - 1) ^ 1.8))`).
 - **Core XP Rewards**:
+  - **Quests Completed**: `+1,000 XP`
   - **Catching Pokémon**: `+50 XP`
   - **Wild Battles**: `+15 XP`
   - **Trainer Battles**: `+40 XP`
@@ -46,7 +73,7 @@ It combines seamless real-time overworld MMO co-op, custom character avatars, pe
 
 ---
 
-### 🏪 4. 24/7 Global Trade Station (GTS) & PVP Battles
+### 🏪 6. 24/7 Global Trade Station (GTS) & PVP Battles
 - **Alphabetical Wanted Pokémon Selector**: Choose up to 3 wanted species (`A-C`, `D-F`, `G-I`, `J-L`, `M-O`, `P-R`, `S-U`, `V-Z`).
 - **Persistent Cloud Database**: Listings stay safe on the server even when players log off.
 - **Offline Claim Boxes**: Traded Pokémon are delivered safely for your next login.
@@ -56,34 +83,24 @@ It combines seamless real-time overworld MMO co-op, custom character avatars, pe
 
 ## 🛠️ Installation & Setup
 
-1. Place the `gen1online-gamecorner` mod folder into your `mods/` directory:
+1. Place the `gen1online-gamecorner` and `gen1quests` mod folders into your `mods/` directory:
    ```
    pokemon-gen1-recomp/mods/gen1online-gamecorner/
+   pokemon-gen1-recomp/mods/gen1quests/
    ```
 2. Start the server (or connect to an existing host):
    ```bash
    python gts_server.py
    ```
 3. In *Pokémon Gen 1 Recomp*, press **`START`** → Select **`CONNECT TO SERVER`**.
-4. Teleport directly to **`GAME CORNER`** or **`BLACKJACK LOUNGE`** using the **Debug Menu**!
+4. Speak to **Fixer Felix** in Pallet Town to begin your first cooperative quest!
 
 ---
 
 ## 👨‍💻 Credits & Acknowledgements
 
-A huge thank you to all the talented creators and contributors who made this mod possible:
-
-### 🎰 Blackjack Corner & Casino Games
-- **Creator**: **martin2844** ([martin2844/gen1recomp-blackjack-corner](https://github.com/martin2844/gen1recomp-blackjack-corner))
-  - Designed and created the original **Blackjack Corner** mod.
-  - Authored the Celadon Casino Lounge map (`BLACKJACK_LOUNGE`), custom pixel-art table sprites, Blackjack rules engine, original Texas Hold'em rules & view, Crash machine, Tube Flyer, Prize Case, Pawn Broker, and 1,000,000-coin economy.
-
-### 🌐 Gen1Online MMO & Multiplayer Infrastructure
 - **Creator & Lead Designer**: **Gamecorner33**
-  - Architected the Gen1Online concept, overworld player synchronization, 24/7 GTS system, and MMO design.
+- **Original Blackjack Mod Creator**: **martin2844** ([martin2844/gen1recomp-blackjack-corner](https://github.com/martin2844/gen1recomp-blackjack-corner))
 - **Co-Developer**: **Google DeepMind / Antigravity AI Assistant**
-  - Developed the asynchronous 60FPS non-blocking network thread, lockstep PVP Link Battles, MMO leveling curve & Trainer Card, account recovery tokens, anti-cheat audit suite, and the real-time **Online Multiplayer Texas Hold'em Engine**.
-
-### 💡 Inspiration & Platform Credits
-- **alamops** ([alamops/RBYMMOMod](https://github.com/alamops/RBYMMOMod)) — For creating the wonderful **RBY MMO** mod, which served as an invaluable reference and inspiration for avatar selection, chat relays, and multiplayer mechanics in Gen 1.
-- **bryanthaboi** and the **Gen 1 Recomp Team** ([bryanthaboi/gen1recomp](https://github.com/bryanthaboi/gen1recomp)) — For the foundational decompilation and recompilation platform that makes all of this modding possible.
+- **MMO Engine Inspiration**: **alamops** ([alamops/RBYMMOMod](https://github.com/alamops/RBYMMOMod))
+- **Platform**: **bryanthaboi** and the **Gen 1 Recomp Team** ([bryanthaboi/gen1recomp](https://github.com/bryanthaboi/gen1recomp))

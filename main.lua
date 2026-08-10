@@ -3,6 +3,16 @@
 return function(mod)
   print("[Gen1Online] Initializing Gen1Online Asynchronous Threaded 60FPS MMO Mod...")
 
+  local function loadLocal(mod, relative)
+    local source = assert(mod:read(relative), "missing " .. relative)
+    local chunk, err = load(source, "@" .. (mod.path or "mod") .. "/" .. relative)
+    assert(chunk, err)
+    return chunk()
+  end
+
+  local Quests = loadLocal(mod, "quests/init.lua")(loadLocal, mod)
+  local NPCs = loadLocal(mod, "npcs/init.lua")(loadLocal, mod)
+
   local Game = require("src.core.Game")
   local Input = require("src.core.Input")
   local OverworldState = require("src.world.OverworldController")
@@ -34,7 +44,8 @@ return function(mod)
   if not hasLtn12 then ltn12 = nil end
 
   -- Direct Cloudflare Tunnel URL
-  local GTS_SERVER_URL = "https://highest-luxury-constructed-switch.trycloudflare.com"
+  local GTS_SERVER_URL = "https://happening-payments-portal-ceremony.trycloudflare.com"
+  _G.GTS_SERVER_URL = GTS_SERVER_URL
   local isGtsServerConnected = false -- Explicit manual connection required via menu
 
   -- Lock Game Speed strictly to 1X whenever online and connected to the server to prevent desyncs
@@ -172,7 +183,7 @@ return function(mod)
           url = url, method = "POST",
           headers = { ["Content-Type"]="application/json",
                       ["Content-Length"]=tostring(#body),
-                      ["X-Mod-Version"]="0.3.4.2" },
+                      ["X-Mod-Version"]="0.3.4.3" },
           source = ltn12.source.string(body),
           sink   = ltn12.sink.table(resp_body),
           timeout = 3.5
@@ -262,7 +273,7 @@ return function(mod)
     return false, nil, nil, nil, nil
   end
 
-  local MOD_VERSION = "0.3.4.2"
+  local MOD_VERSION = "0.3.4.3"
 
   -- Client Game Version (Red/Blue/Yellow) & Recomp Engine Version Detector
   local function getClientVersionInfo()
@@ -754,6 +765,24 @@ return function(mod)
     })
   end)
 
+  local activeQuestsCache = {}
+
+  local function fetchPlayerQuests(game)
+    game = game or Game
+    local tid = getTrainerInfo and getTrainerInfo(game and game.save) or "100001"
+    local data = gtsApiPost({ action = "get_quests", trainerId = tid }, 1.5)
+    if data and data.success and data.quests then
+      activeQuestsCache = data.quests
+      return activeQuestsCache
+    end
+    return activeQuestsCache or {}
+  end
+
+  local function getTrainerId(save)
+    local tid, tName = getTrainerInfo(save)
+    return tid
+  end
+
   -- Trainer ID & Name Helper
   getTrainerInfo = function(save)
     local p = save and save.player
@@ -886,6 +915,37 @@ return function(mod)
     if acc.title then localTrainerTitle = acc.title end
     if acc.favoriteMon then localFavoriteMon = acc.favoriteMon end
     if acc.blackouts then save.blackoutCount = acc.blackouts end
+
+    -- Sanitize pcItems: migrate any legacy array-of-objects format to { ITEM_ID = count }
+    -- (PlayerPC.lua and Bag.lua expect pairs() over string keys, not ipairs over arrays)
+    local function sanitizeItemMap(tbl)
+      if type(tbl) ~= "table" then return {} end
+      -- Check if it's already in the correct key-value format (string keys = item IDs)
+      for k, v in pairs(tbl) do
+        if type(k) == "string" and type(v) == "number" then
+          return tbl -- already correct format
+        end
+        -- It's array-of-objects: { { item = "POTION", count = 1 }, ... }
+        if type(k) == "number" and type(v) == "table" then
+          local out = {}
+          for _, entry in ipairs(tbl) do
+            if type(entry) == "table" and entry.item then
+              out[entry.item] = (out[entry.item] or 0) + (entry.count or 1)
+            end
+          end
+          return out
+        end
+        break
+      end
+      return tbl
+    end
+
+    save.pcItems = sanitizeItemMap(save.pcItems)
+    if not next(save.pcItems) then
+      save.pcItems = { POTION = 1 }
+    end
+
+    save.inventory = sanitizeItemMap(save.inventory)
   end
 
   saveOnlineAccount = function(save)
@@ -919,7 +979,7 @@ return function(mod)
     }, 1.5)
   end
 
-  addMmoXp = function(game, xpType, extraAmount)
+  addMmoXp = function(game, xpType, extraAmount, extraFields)
     local rewards = {
       catch = 50,
       wild_battle = 15,
@@ -938,14 +998,18 @@ return function(mod)
       performForcedSave(game)
 
       local tid, tName = getTrainerInfo(game.save)
-      gtsApiPost({
+      local payload = {
         action = "sync_xp",
         trainerId = tid,
         token = mmoToken,
         xpType = xpType,
         badges = getBadgeCount(game.save),
         pokedexCount = getPokedexCount(game.save)
-      }, 1.5)
+      }
+      if extraFields then
+        for k, v in pairs(extraFields) do payload[k] = v end
+      end
+      gtsApiPost(payload, 1.5)
 
       if mmoLevel > oldLevel then
         local Sound = require("src.core.Sound")
@@ -1026,12 +1090,12 @@ return function(mod)
         gtsApiPost({ action = "clear_battle_room", roomId = roomId }, 0.5)
 
         if self.result == "win" then
-          addMmoXp(game, "pvp_win")
+          addMmoXp(game, "pvp_win", nil, { opponentName = opponentName or "TRAINER", opponentId = opponentId or "0" })
           syncLocalProfile(game, 1)
           performForcedSave(game)
           game.stack:push(TextBox.new(game, string.format("VICTORY!\nDEFEATED %s IN PVP!\n(+100 MMO XP)", opponentName or "TRAINER")))
         else
-          addMmoXp(game, "pvp_loss")
+          addMmoXp(game, "pvp_loss", nil, { opponentName = opponentName or "TRAINER", opponentId = opponentId or "0" })
           performForcedSave(game)
           game.stack:push(TextBox.new(game, string.format("LINK BATTLE FINISHED\nWITH %s!\n(+25 MMO XP)", opponentName or "TRAINER")))
         end
@@ -1474,18 +1538,19 @@ return function(mod)
       end,
       draw = function(self)
         Font.drawBox(0, 0, 20, 18)
-        Font.draw("TRAINER CARD", 32, 10)
+        local hdr = "TRAINER CARD"
+        Font.draw(hdr, math.floor((160 - #hdr * 8) / 2), 10)
         Font.draw("==================", 8, 20)
-        Font.draw(string.format("NAME: %s", name), 12, 30)
-        Font.draw(string.format("LV:%d  ID:%s", level, tostring(queryTid):sub(1,6)), 12, 42)
-        Font.draw(string.format("EXP:%d (%d NEED)", expVal, expNeeded), 12, 54)
-        Font.draw(string.format("TITLE: %s", rank), 12, 66)
-        Font.draw(string.format("RANK: #%d / %d", serverRank, totalPlayers), 12, 78)
-        Font.draw(string.format("PVP: %dW / %dL", pvpWins, pvpLosses), 12, 90)
-        Font.draw(string.format("BADGES:%d/8 DEX:%d", badges, pokedexCount), 12, 102)
-        Font.draw(string.format("FAVORITE: %s", favMon), 12, 114)
+        Font.draw(string.format("NAME: %s", name:sub(1, 12)), 8, 30)
+        Font.draw(string.format("LV:%d  ID:%s", level, tostring(queryTid):sub(1,6)), 8, 42)
+        Font.draw(string.format("EXP:%d (%d NEED)", expVal, expNeeded), 8, 54)
+        Font.draw(string.format("TITLE: %s", rank:sub(1, 11)), 8, 66)
+        Font.draw(string.format("RANK: #%d / %d", serverRank, totalPlayers), 8, 78)
+        Font.draw(string.format("PVP: %dW / %dL", pvpWins, pvpLosses), 8, 90)
+        Font.draw(string.format("BADGES:%d/8 DEX:%d", badges, pokedexCount), 8, 102)
+        Font.draw(string.format("FAVORITE: %s", favMon:sub(1, 8)), 8, 114)
         Font.draw("==================", 8, 122)
-        Font.draw("A/B: CLOSE", 44, 128)
+        Font.draw("A/B: CLOSE", math.floor((160 - 10 * 8) / 2), 128)
       end
     }
     game.stack:push(container)
@@ -1510,21 +1575,22 @@ return function(mod)
       end,
       draw = function(self)
         Font.drawBox(0, 0, 20, 18)
-        Font.draw("EXP & LEVEL INFO", 16, 8)
+        local hdr = "EXP & LEVEL INFO"
+        Font.draw(hdr, math.floor((160 - #hdr * 8) / 2), 8)
         Font.draw("==================", 8, 18)
-        Font.draw(string.format("PLAYER: %s", tNameShort), 12, 28)
-        Font.draw(string.format("ID: %s", tostring(trainerId):sub(1, 10)), 12, 40)
-        Font.draw(string.format("LEVEL: %d / 100", lvl), 12, 54)
-        Font.draw(string.format("TOTAL EXP: %d", xp), 12, 68)
+        Font.draw(string.format("PLAYER: %s", tNameShort), 8, 28)
+        Font.draw(string.format("ID: %s", tostring(trainerId):sub(1, 10)), 8, 40)
+        Font.draw(string.format("LEVEL: %d / 100", lvl), 8, 54)
+        Font.draw(string.format("TOTAL EXP: %d", xp), 8, 68)
         if lvl >= 100 then
-          Font.draw("STATUS: MAX LEVEL!", 12, 84)
-          Font.draw("EXP NEEDED: 0", 12, 98)
+          Font.draw("STATUS: MAX LEVEL!", 8, 84)
+          Font.draw("EXP NEEDED: 0", 8, 98)
         else
-          Font.draw(string.format("NEXT: LV%d (%d)", lvl + 1, nextLvlXp), 12, 84)
-          Font.draw(string.format("EXP NEED: %d", needed), 12, 98)
+          Font.draw(string.format("NEXT: LV%d (%d)", lvl + 1, nextLvlXp), 8, 84)
+          Font.draw(string.format("EXP NEED: %d", needed), 8, 98)
         end
         Font.draw("==================", 8, 114)
-        Font.draw("A/B: CLOSE", 40, 126)
+        Font.draw("A/B: CLOSE", math.floor((160 - 10 * 8) / 2), 126)
       end
     }
     game.stack:push(container)
@@ -1636,27 +1702,29 @@ return function(mod)
       end,
       draw = function(self)
         Font.drawBox(0, 0, 20, 18)
-        Font.draw("GTS LISTING DETAILS", 16, 10)
+        local hdr = "GTS LISTING"
+        Font.draw(hdr, math.floor((160 - #hdr * 8) / 2), 10)
         Font.draw("==================", 8, 20)
-        Font.draw(string.format("OFFER: %s", offName), 12, 32)
-        Font.draw(string.format("LEVEL: %d", offered.level or 1), 12, 44)
-        Font.draw(string.format("OT: %s (ID %s)", otName, tostring(listing.trainerId or 0):sub(1,6)), 12, 56)
-        Font.draw("WANTED POKéMON:", 12, 68)
+        Font.draw(string.format("OFFER: %s", offName:sub(1, 11)), 8, 32)
+        Font.draw(string.format("LEVEL: %d", offered.level or 1), 8, 44)
+        Font.draw(string.format("OT: %s (ID %s)", otName:sub(1, 6), tostring(listing.trainerId or 0):sub(1,6)), 8, 56)
+        Font.draw("WANTED POKéMON:", 8, 68)
 
         if #wantedList == 0 then
-          Font.draw(" - ANY POKéMON", 16, 80)
+          Font.draw(" - ANY POKéMON", 8, 80)
         else
           local curY = 80
           for _, wSpec in ipairs(wantedList) do
             local wName = (game.data.pokemon[wSpec] and game.data.pokemon[wSpec].name) or wSpec
-            if #wName > 12 then wName = wName:sub(1, 12) end
-            Font.draw(string.format(" - %s", wName), 16, curY)
+            if #wName > 14 then wName = wName:sub(1, 14) end
+            Font.draw(string.format(" - %s", wName), 8, curY)
             curY = curY + 12
           end
         end
 
         Font.draw("==================", 8, 114)
-        Font.draw("A: TRADE  B: BACK", 28, 126)
+        local ftr = "A: TRADE  B: BACK"
+        Font.draw(ftr, math.floor((160 - #ftr * 8) / 2), 126)
       end
     }
     game.stack:push(container)
@@ -2253,8 +2321,9 @@ return function(mod)
               newSave.badges = {}
               newSave.pokedex = { owned = {}, seen = {} }
               newSave.money = 3000
-              newSave.items = { { item = "POTION", count = 1 } }
-              newSave.pcItems = { { item = "POTION", count = 1 } }
+              newSave.inventory = newSave.inventory or {}
+              newSave.inventory["POTION"] = 1
+              newSave.pcItems = { POTION = 1 }
               newSave.onlineAccount = {
                 trainerId = tostring(newTid),
                 name = chosenName,
@@ -3087,6 +3156,7 @@ return function(mod)
       Game.save.player.facing = facing or Game.save.player.facing or "down"
       writeOnlineSave(Game.save)
     end
+    NPCs.spawnForMap(self)
     return res
   end
 
@@ -3181,6 +3251,9 @@ return function(mod)
       return
     end
 
+    if self.map and (self.map.id == "PALLET_TOWN" or self.map.id == "POWER_PLANT" or self.map.id == "VIRIDIAN_FOREST" or self.map.id == "PEWTER_CITY") then
+      NPCs.spawnForMap(self)
+    end
     if origOverworldUpdate then origOverworldUpdate(self, dt) end
     if not Game or not isGtsServerConnected then return end
 
@@ -3252,6 +3325,23 @@ return function(mod)
         })
       end
     end
+  end
+
+
+  local origTalkTo = OverworldState.talkTo
+  OverworldState.talkTo = function(self, npc)
+    local helpers = {
+      wrapText = wrapText,
+      getTrainerId = getTrainerId,
+      fetchPlayerQuests = fetchPlayerQuests,
+      questApiPost = gtsApiPost,
+      activeQuestsCache = activeQuestsCache,
+      findBugHeadButterfreeIndex = Quests.findBugHeadButterfreeIndex
+    }
+    if NPCs.talkTo(self, npc, helpers) then
+      return
+    end
+    return origTalkTo and origTalkTo(self, npc)
   end
 
   -- Hook Overworld Interact (Facing any MMO player on the map and pressing A)
