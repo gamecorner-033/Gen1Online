@@ -1,10 +1,9 @@
--- Registry & Template for Custom Trainer Battle NPCs
-local BattleCategory = {
-  registry = {}
-}
+-- Registry for Custom Trainer Battle NPCs
+return function(loadModFile, mod)
+  local BattleCategory = {
+    route1 = loadModFile(mod, "npcs/battle/route1_trainer.lua"),
+    route2 = loadModFile(mod, "npcs/battle/route2_brothers.lua")
+  }
 
-function BattleCategory.register(battleNpcDef)
-  table.insert(BattleCategory.registry, battleNpcDef)
+  return BattleCategory
 end
-
-return BattleCategory

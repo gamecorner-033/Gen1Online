@@ -18,7 +18,7 @@ return function(loadModFile, mod)
   }
 
   NPCs.shop = loadModFile(mod, "npcs/shop/index.lua")
-  NPCs.battle = loadModFile(mod, "npcs/battle/index.lua")
+  NPCs.battle = loadModFile(mod, "npcs/battle/index.lua")(loadModFile, mod)
 
   local function safeCreateAndInsert(ow, flagKey, createFn)
     for _, n in ipairs(ow.npcs) do
@@ -59,6 +59,17 @@ return function(loadModFile, mod)
     if mapId == "PEWTER_CITY" and NPCs.trade.haunter then
       safeCreateAndInsert(ow, "isHaunterTrader", NPCs.trade.haunter.createNPC)
     end
+
+    -- 5. Route 1: Youngster Charlie (Level 7 Growlithe)
+    if mapId == "ROUTE_1" and NPCs.battle and NPCs.battle.route1 then
+      safeCreateAndInsert(ow, "isRoute1Charlie", NPCs.battle.route1.createNPC)
+    end
+
+    -- 6. Route 2: Wonder Brothers (Dan & Dave - 2v2 Double Battle)
+    if mapId == "ROUTE_2" and NPCs.battle and NPCs.battle.route2 then
+      safeCreateAndInsert(ow, "isRoute2Dan", NPCs.battle.route2.createDanNPC)
+      safeCreateAndInsert(ow, "isRoute2Dave", NPCs.battle.route2.createDaveNPC)
+    end
   end
 
   -- Route player interaction to the custom NPC handler
@@ -81,6 +92,14 @@ return function(loadModFile, mod)
     end
     if npc.isHaunterTrader and NPCs.trade.haunter then
       NPCs.trade.haunter.interact(ow.game or Game, npc, helpers)
+      return true
+    end
+    if npc.isRoute1Charlie and NPCs.battle and NPCs.battle.route1 then
+      NPCs.battle.route1.interact(ow.game or Game, npc, helpers)
+      return true
+    end
+    if (npc.isRoute2Dan or npc.isRoute2Dave) and NPCs.battle and NPCs.battle.route2 then
+      NPCs.battle.route2.interact(ow.game or Game, npc, helpers)
       return true
     end
     return false

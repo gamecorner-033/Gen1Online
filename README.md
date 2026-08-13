@@ -1,7 +1,7 @@
 # Gen1Online Game Corner - Multiplayer MMO, GTS, Casino Lounge & Online Quests
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Mod Version: v0.3.4.3](https://img.shields.io/badge/version-0.3.4.3-green.svg)](manifest.json)
+[![Mod Version: v0.3.5.0](https://img.shields.io/badge/version-0.3.5.0-green.svg)](manifest.json)
 
 **Gen1Online Game Corner** brings the ultimate multiplayer Pokémon MMO experience together with cooperative quests, persistent progression, and high-stakes casino entertainment in *Pokémon Gen 1 Recomp*.
 
@@ -101,6 +101,7 @@ It combines seamless real-time overworld MMO co-op, custom character avatars, pe
 
 - **Creator & Lead Designer**: **Gamecorner33**
 - **Original Blackjack Mod Creator**: **martin2844** ([martin2844/gen1recomp-blackjack-corner](https://github.com/martin2844/gen1recomp-blackjack-corner))
+- **Double Battles Framework**: **Shane Hudson** ([shanehudson-gen1recomp-mods/double_battles](https://github.com/shanehudson-gen1recomp-mods/monorepo))
 - **Co-Developer**: **Google DeepMind / Antigravity AI Assistant**
 - **MMO Engine Inspiration**: **alamops** ([alamops/RBYMMOMod](https://github.com/alamops/RBYMMOMod))
 - **Platform**: **bryanthaboi** and the **Gen 1 Recomp Team** ([bryanthaboi/gen1recomp](https://github.com/bryanthaboi/gen1recomp))

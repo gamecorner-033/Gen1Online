@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.5.0] - 2026-08-11
+
+### Added
+
+- **Gen 2 (Gold) Support.** The mod now declares `"api": 2` and
+  `"games": ["gen1", "gen2"]`, enabling it to load on Gold boots via the
+  Gen 2 compatibility adapter.
+- Generation detection helper (`currentGeneration` / `isGen2`) for
+  future generation-conditional logic.
+
+### Changed
+
+- Online save files on Gold now use a `_gold` suffix
+  (`save_online_gold.lua`) to keep progress separate from Gen 1 saves.
+- `Game.logicSpeed` override is now guarded with a nil check for Gen 2
+  facade safety — the patch only installs when the method exists.
+
 ## [0.2.0] - 2026-08-07
 
 ### Added

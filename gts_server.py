@@ -30,7 +30,40 @@ PORT = int(os.environ.get("PORT", 7779))
 DB_FILE = os.environ.get("GTS_DB_PATH", os.path.join(os.path.dirname(__file__), "gts_database.json"))
 BACKUP_DB_FILE = os.environ.get("GTS_BACKUP_PATH", os.path.join(os.path.dirname(__file__), "players_backup.json"))
 
-MOD_VERSION = "0.3.4.3"
+MOD_VERSION = "0.3.5.0"
+
+MOD_DIR = os.path.dirname(os.path.abspath(__file__))
+# Private Host-Only IP Audit Ledger (Saved locally inside mod folder, NEVER exposed to web/API)
+PRIVATE_IP_LOG_FILE = os.path.join(MOD_DIR, "private_ip_ledger.json")
+
+def log_private_ip(trainer_id, trainer_name, client_ip):
+    if not trainer_id or not client_ip: return
+    try:
+        ledger = {}
+        if os.path.exists(PRIVATE_IP_LOG_FILE):
+            with open(PRIVATE_IP_LOG_FILE, "r", encoding="utf-8") as f:
+                ledger = json.load(f)
+        ledger[str(trainer_id)] = {
+            "trainerId": str(trainer_id),
+            "name": trainer_name,
+            "ip": client_ip,
+            "lastSeen": int(time.time()),
+            "lastSeenDate": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        }
+        with open(PRIVATE_IP_LOG_FILE, "w", encoding="utf-8") as f:
+            json.dump(ledger, f, indent=2)
+    except Exception as e:
+        print(f"[Private IP Ledger Error]: {e}")
+
+def sanitize_active_players(active_players_dict):
+    sanitized = {}
+    if not active_players_dict: return sanitized
+    for tid, pdata in active_players_dict.items():
+        if isinstance(pdata, dict):
+            p_copy = dict(pdata)
+            p_copy.pop("ip", None)
+            sanitized[tid] = p_copy
+    return sanitized
 
 LISTING_TTL_SECONDS = 30 * 86400
 CLAIM_TTL_SECONDS = 60 * 86400
@@ -104,6 +137,16 @@ def load_db():
         except Exception as e:
             print(f"[GTS Cloud Server] Error loading database: {e}")
 
+    # Auto-migrate legacy misclassified trainerBattles -> wildBattles
+    for tid, acc in db.get("accounts", {}).items():
+        if isinstance(acc, dict):
+            tb = acc.get("trainerBattles", 0)
+            wb = acc.get("wildBattles", 0)
+            if wb == 0 and tb > 0:
+                acc["wildBattles"] = tb
+                acc["npcBattles"] = 0
+                acc["trainerBattles"] = 0
+
     # Also restore accounts from backup if available
     if os.path.exists(BACKUP_DB_FILE):
         try:
@@ -138,6 +181,59 @@ def save_backup():
         }
         with open(BACKUP_DB_FILE, "w", encoding="utf-8") as f:
             json.dump(backup_copy, f, indent=2)
+
+        # Create 'Players Backup' folder inside mod directory for host machine inspection
+        backup_dir = os.path.join(MOD_DIR, "Players Backup")
+        os.makedirs(backup_dir, exist_ok=True)
+        for tid, acc in db.get("accounts", {}).items():
+            if isinstance(acc, dict):
+                p_name = re.sub(r'[^\w\-]', '_', str(acc.get("name", "TRAINER")))
+                p_filename = f"Player_{tid}_{p_name}.json"
+                p_path = os.path.join(backup_dir, p_filename)
+
+                profile = db.get("profiles", {}).get(tid, {})
+                flags_data = profile.get("flags", {})
+                completed_flags = []
+                if isinstance(flags_data, dict):
+                    completed_flags = [k for k, v in flags_data.items() if v is True]
+                elif isinstance(flags_data, list):
+                    completed_flags = flags_data
+
+                p_data = {
+                    "trainerId": tid,
+                    "name": acc.get("name"),
+                    "recoveryToken": acc.get("token"),
+                    "level": acc.get("level", 1),
+                    "xp": acc.get("xp", 0),
+                    "spriteId": acc.get("spriteId"),
+                    "title": acc.get("title"),
+                    "badges": {
+                        "count": profile.get("badges", 0),
+                        "list": profile.get("badgesList", [])
+                    },
+                    "pokedex": {
+                        "count": profile.get("pokedexCount", 0)
+                    },
+                    "party": profile.get("party", []),
+                    "eventFlagsSummary": {
+                        "totalCompletedCount": len(completed_flags),
+                        "completedFlags": completed_flags,
+                        "mapScenes": profile.get("mapScenes", {}),
+                        "allFlagsState": flags_data
+                    },
+                    "gameStats": {
+                        "money": profile.get("money", 0),
+                        "coins": profile.get("coins", 0),
+                        "currentMap": profile.get("map", "UNKNOWN"),
+                        "lastSeen": acc.get("lastSeen") or profile.get("timestamp")
+                    },
+                    "createdAt": acc.get("createdAt"),
+                    "lastSeen": acc.get("lastSeen") or profile.get("timestamp"),
+                    "profile": profile,
+                    "account": acc
+                }
+                with open(p_path, "w", encoding="utf-8") as pf:
+                    json.dump(p_data, pf, indent=2)
     except Exception as e:
         print(f"[GTS Cloud Server] Error saving host backup: {e}")
 
@@ -1164,6 +1260,128 @@ class QuestManager:
         }
 
 
+
+def get_analytics_data():
+    all_accs = list(db.get("accounts", {}).values())
+    valid_accs = [a for a in all_accs if not a.get("isBanned", False)]
+
+    # 1. Top 10 Players - Wild Pokémon Battled
+    p_wild_battled = sorted(valid_accs, key=lambda a: a.get("wildBattles", 0), reverse=True)
+    top_wild_battled_players = [
+        {"name": a.get("name", "TRAINER"), "count": a.get("wildBattles", 0)}
+        for a in p_wild_battled[:10] if a.get("wildBattles", 0) > 0
+    ]
+
+    # 2. Top 10 Players - Wild Pokémon Caught
+    p_wild_caught = sorted(valid_accs, key=lambda a: a.get("wildCaught", 0), reverse=True)
+    top_wild_caught_players = [
+        {"name": a.get("name", "TRAINER"), "count": a.get("wildCaught", 0)}
+        for a in p_wild_caught[:10] if a.get("wildCaught", 0) > 0
+    ]
+
+    # 3. Top 10 Players - NPC Trainer Battles
+    p_npc = sorted(valid_accs, key=lambda a: a.get("npcBattles", 0), reverse=True)
+    top_npc_trainer_players = [
+        {"name": a.get("name", "TRAINER"), "count": a.get("npcBattles", 0)}
+        for a in p_npc[:10] if a.get("npcBattles", 0) > 0
+    ]
+
+    # 4. Top 10 Players - PvP Trainer Battles
+    p_pvp = sorted(valid_accs, key=lambda a: (a.get("pvpWins", 0) + a.get("pvpLosses", 0)), reverse=True)
+    top_pvp_trainer_players = [
+        {"name": a.get("name", "TRAINER"), "count": (a.get("pvpWins", 0) + a.get("pvpLosses", 0)), "wins": a.get("pvpWins", 0)}
+        for a in p_pvp[:10] if (a.get("pvpWins", 0) + a.get("pvpLosses", 0)) > 0
+    ]
+
+    # Species summaries
+    sp_battled = [{"name": s, "count": c} for s, c in db.get("species_battled", {}).items()]
+    sp_battled.sort(key=lambda x: x["count"], reverse=True)
+
+    sp_caught = [{"name": s, "count": c} for s, c in db.get("species_caught", {}).items()]
+    sp_caught.sort(key=lambda x: x["count"], reverse=True)
+
+    return {
+        "top_wild_battled_players": top_wild_battled_players,
+        "top_wild_caught_players": top_wild_caught_players,
+        "top_npc_trainer_players": top_npc_trainer_players,
+        "top_pvp_trainer_players": top_pvp_trainer_players,
+        "top_battled_species": sp_battled[0]["name"] if sp_battled else "N/A",
+        "top_caught_species": sp_caught[0]["name"] if sp_caught else "N/A"
+    }
+
+def render_analytics_html(data):
+    def make_bars(items, title, color_class, icon, sub_info=None):
+        bars_html = ""
+        max_val = max([item["count"] for item in items], default=1)
+        for idx, item in enumerate(items, start=1):
+            pct = min(100, max(6, int((item["count"] / max_val) * 100)))
+            rank_badge = "🥇" if idx == 1 else ("🥈" if idx == 2 else ("🥉" if idx == 3 else f"#{idx}"))
+            bars_html += f"""
+            <div class="bar-row">
+                <div class="rank-badge">{rank_badge}</div>
+                <div class="label-box">{item['name']}</div>
+                <div class="bar-container">
+                    <div class="bar-fill {color_class}" style="width: {pct}%;">
+                        <span class="bar-value">{item['count']}</span>
+                    </div>
+                </div>
+            </div>"""
+        if not items:
+            bars_html = '<div class="no-data">No active player statistics recorded yet.</div>'
+        sub_badge = f'<div class="sub-info">{sub_info}</div>' if sub_info else ''
+        return f"""
+        <div class="chart-card">
+            <div class="card-header">
+                <h3>{icon} {title}</h3>
+                {sub_badge}
+            </div>
+            <div class="chart-box">
+                {bars_html}
+            </div>
+        </div>"""
+
+    top_sp_b = data.get("top_battled_species", "N/A")
+    top_sp_c = data.get("top_caught_species", "N/A")
+
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Gen 1 Online - Server Battle Leaderboard</title>
+    <meta http-equiv="refresh" content="10">
+    <style>
+        body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f121d; color: #f0f3f9; margin: 0; padding: 25px; }}
+        h1 {{ text-align: center; color: #ffcb05; text-shadow: 2px 2px #3b4cca; font-size: 2.2em; margin-bottom: 25px; }}
+        .grid-container {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 25px; max-width: 1400px; margin: 0 auto; }}
+        .chart-card {{ background: #1a1e2e; border: 2px solid #2a314d; border-radius: 12px; padding: 22px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }}
+        .card-header {{ display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #2a314d; padding-bottom: 12px; margin-bottom: 15px; }}
+        .chart-card h3 {{ color: #ff4757; margin: 0; font-size: 1.25em; }}
+        .sub-info {{ background: #2a314d; color: #ffcb05; padding: 4px 10px; border-radius: 20px; font-size: 0.8em; font-weight: bold; }}
+        .bar-row {{ display: flex; align-items: center; margin-bottom: 12px; font-size: 0.95em; }}
+        .rank-badge {{ width: 35px; text-align: center; font-weight: bold; font-size: 1.1em; }}
+        .label-box {{ width: 140px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 10px; }}
+        .bar-container {{ flex: 1; background: #0f121d; border-radius: 6px; height: 26px; position: relative; overflow: hidden; }}
+        .bar-fill {{ height: 100%; border-radius: 6px; display: flex; align-items: center; justify-content: flex-end; padding-right: 10px; font-weight: bold; font-size: 0.85em; transition: width 0.5s ease; }}
+        .red-fill {{ background: linear-gradient(90deg, #ff4757, #ff6b81); color: #fff; }}
+        .green-fill {{ background: linear-gradient(90deg, #2ed573, #7bed9f); color: #000; }}
+        .purple-fill {{ background: linear-gradient(90deg, #a55eea, #4b7bec); color: #fff; }}
+        .gold-fill {{ background: linear-gradient(90deg, #ffa502, #eccc68); color: #000; }}
+        .no-data {{ color: #888; font-style: italic; padding: 20px 0; text-align: center; }}
+        .footer {{ text-align: center; margin-top: 35px; color: #666; font-size: 0.85em; }}
+    </style>
+</head>
+<body>
+    <h1>🎮 Gen 1 Online - Server Battle Leaderboard</h1>
+    <div class="grid-container">
+        {make_bars(data.get("top_wild_battled_players", []), "Top 10 Players - Wild Pokémon Battled", "red-fill", "⚔️", f"Most Battled Species: {top_sp_b}")}
+        {make_bars(data.get("top_wild_caught_players", []), "Top 10 Players - Wild Pokémon Caught", "green-fill", "🔴", f"Most Caught Species: {top_sp_c}")}
+        {make_bars(data.get("top_npc_trainer_players", []), "Top 10 Players - NPC Trainer Battles", "purple-fill", "🥋")}
+        {make_bars(data.get("top_pvp_trainer_players", []), "Top 10 Players - PvP Link Battles", "gold-fill", "🏆")}
+    </div>
+    <div class="footer">Server Version v0.3.5.0 &bull; Auto-refreshes every 10 seconds</div>
+</body>
+</html>"""
+
 class GTSHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         return
@@ -1175,6 +1393,13 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
         if xf_ip: return xf_ip.split(",")[0].strip()
         return self.client_address[0]
 
+    def _send_html(self, html_str, status=200):
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(html_str.encode("utf-8"))
+
     def _send_json(self, data, status=200):
         body = json.dumps(data).encode("utf-8")
         self.send_response(status)
@@ -1185,9 +1410,15 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        # Strict Mod Version Gate for GET requests (except public server discovery)
+        # Strict Mod Version Gate for GET requests (except public web browser / analytics endpoints)
         path_only = self.path.split("?")[0]
-        if not path_only.startswith("/server/info") and path_only != "/":
+        public_paths = [
+            "/", "/analytics", "/dashboard", "/analytics/data",
+            "/mmo/analytics", "/mmo/leaderboard", "/battles/log",
+            "/quests/log", "/server/info"
+        ]
+        is_public = any(path_only == p or path_only.startswith(p) for p in public_paths)
+        if not is_public:
             client_ver = self.headers.get("X-Mod-Version", "").strip()
             if not client_ver and "?" in self.path:
                 for p in self.path.split("?")[1].split("&"):
@@ -1215,7 +1446,7 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 "success": True,
                 "status": "ONLINE",
                 "active_player_count": len(db["active_players"]),
-                "active_players": db["active_players"],
+                "active_players": sanitize_active_players(db["active_players"]),
                 "listings": db["listings"],
                 "history": db["history"]
             })
@@ -1223,7 +1454,7 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
             self._send_json({
                 "success": True,
                 "online_count": len(db["active_players"]),
-                "players": db["active_players"]
+                "players": sanitize_active_players(db["active_players"])
             })
         elif path_only.startswith("/gts/profile"):
             trainer_id = None
@@ -1371,7 +1602,7 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 "success": True,
                 "version": MOD_VERSION,
                 "modVersion": MOD_VERSION,
-                "serverName": "Gen 1 Online Official MMO Server",
+                "serverName": "Pokémon Gold Online Official Server",
                 "activePlayers": len(db.get("active_players", {})),
                 "totalAccounts": len(db.get("accounts", {}))
             })
@@ -1398,6 +1629,13 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 "battles": battle_log,
                 "total": len(battle_log)
             })
+        elif path_only.startswith("/analytics/data") or path_only.startswith("/mmo/analytics"):
+            data = get_analytics_data()
+            self._send_json({"success": True, "analytics": data})
+        elif path_only.startswith("/analytics") or path_only.startswith("/dashboard"):
+            data = get_analytics_data()
+            html = render_analytics_html(data)
+            self._send_html(html)
         elif path_only.startswith("/quests/log"):
             # Build a server-wide quest progress summary
             all_player_quests = db.get("player_quests", {})
@@ -1484,8 +1722,49 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
             }, status=426)
             return
 
+        # Strict Game Version Enforcement: Exclusively Pokémon Gold (Gen 2)
+        game_ver = str(req.get("gameVersion", "")).lower()
+        if game_ver and "gold" not in game_ver and "gen2" not in game_ver:
+            self._send_json({
+                "success": False,
+                "error": "GOLD_ONLY",
+                "message": "SERVER HAS MIGRATED EXCLUSIVELY TO POKÉMON GOLD (GEN 2). PLEASE LAUNCH POKÉMON GOLD TO CONNECT."
+            }, status=403)
+            return
+
         action = req.get("action")
         now = int(time.time())
+
+        if action == "report_battle_stat":
+            trainer_id = str(req.get("trainerId"))
+            account = db.get("accounts", {}).get(trainer_id)
+            if account:
+                b_type = req.get("battleType")
+                species = req.get("species")
+                caught = req.get("caught", False)
+
+                if b_type == "wild":
+                    account["wildBattles"] = account.get("wildBattles", 0) + 1
+                    if species:
+                        species_str = str(species).upper()
+                        db.setdefault("species_battled", {})[species_str] = db.get("species_battled", {}).get(species_str, 0) + 1
+                    if caught:
+                        account["wildCaught"] = account.get("wildCaught", 0) + 1
+                        if species:
+                            species_str = str(species).upper()
+                            db.setdefault("species_caught", {})[species_str] = db.get("species_caught", {}).get(species_str, 0) + 1
+
+                elif b_type == "npc":
+                    account["npcBattles"] = account.get("npcBattles", 0) + 1
+
+                elif b_type == "pvp":
+                    account["pvpBattles"] = account.get("pvpBattles", 0) + 1
+
+                save_db()
+                self._send_json({"success": True})
+            else:
+                self._send_json({"success": False, "error": "ACCOUNT_NOT_FOUND"}, status=404)
+            return
 
         # 1. High-Speed In-Memory MMO Overworld Position Sync Endpoint
         if action == "sync_pos":
@@ -1534,9 +1813,9 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 "modVersion": str(req.get("modVersion", req.get("version", MOD_VERSION))),
                 "gameVersion": str(req.get("gameVersion", "Pokemon Red")),
                 "recompVersion": str(req.get("recompVersion", "0.0.0-dev")),
-                "ip": client_ip,
                 "timestamp": now
             }
+            log_private_ip(trainer_id, player_entry["name"], client_ip)
 
             db["active_players"][trainer_id] = player_entry
 
@@ -1911,12 +2190,20 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
             profile["name"] = req.get("name", profile.get("name"))
             if "title" in req: profile["title"] = req["title"]
             if "badges" in req: profile["badges"] = req["badges"]
+            if "badgesList" in req: profile["badgesList"] = req["badgesList"]
             if "pokedexCount" in req: profile["pokedexCount"] = req["pokedexCount"]
             if "blackouts" in req: profile["blackouts"] = int(req["blackouts"])
             if "blackoutCount" in req: profile["blackouts"] = int(req["blackoutCount"])
             if "gtsTrades" in req: profile["gtsTrades"] = (profile.get("gtsTrades", 0) + req["gtsTrades"])
             if "pvpWins" in req: profile["pvpWins"] = (profile.get("pvpWins", 0) + req["pvpWins"])
             if "favoriteMon" in req: profile["favoriteMon"] = req["favoriteMon"]
+            if "flags" in req: profile["flags"] = req["flags"]
+            if "completedFlags" in req: profile["completedFlags"] = req["completedFlags"]
+            if "mapScenes" in req: profile["mapScenes"] = req["mapScenes"]
+            if "party" in req: profile["party"] = req["party"]
+            if "money" in req: profile["money"] = req["money"]
+            if "coins" in req: profile["coins"] = req["coins"]
+            if "map" in req: profile["map"] = req["map"]
             profile["timestamp"] = now
 
             # Also update account record if present
