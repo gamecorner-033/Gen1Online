@@ -45,7 +45,7 @@ return function(mod)
   if not hasLtn12 then ltn12 = nil end
 
   -- Cloudflare Tunnel URL
-  local GTS_SERVER_URL = "https://headers-today-vacation-specifications.trycloudflare.com"
+  local GTS_SERVER_URL = "https://katrina-quick-bugs-predicted.trycloudflare.com"
   _G.GTS_SERVER_URL = GTS_SERVER_URL
   local isGtsServerConnected = false -- Explicit manual connection required via menu
 
