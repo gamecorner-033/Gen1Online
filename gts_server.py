@@ -30,7 +30,16 @@ PORT = int(os.environ.get("PORT", 7779))
 DB_FILE = os.environ.get("GTS_DB_PATH", os.path.join(os.path.dirname(__file__), "gts_database.json"))
 BACKUP_DB_FILE = os.environ.get("GTS_BACKUP_PATH", os.path.join(os.path.dirname(__file__), "players_backup.json"))
 
-MOD_VERSION = "0.3.5.3"
+MOD_VERSION = "0.3.5.5"
+
+def is_version_compatible(client_ver, server_ver=MOD_VERSION):
+    if not client_ver:
+        return False
+    c_parts = str(client_ver).strip().split(".")
+    s_parts = str(server_ver).strip().split(".")
+    if len(c_parts) >= 2 and len(s_parts) >= 2:
+        return c_parts[0] == s_parts[0] and c_parts[1] == s_parts[1]
+    return str(client_ver).strip() == str(server_ver).strip()
 
 MOD_DIR = os.path.dirname(os.path.abspath(__file__))
 # Private Host-Only IP Audit Ledger (Saved locally inside mod folder, NEVER exposed to web/API)
@@ -1378,7 +1387,7 @@ def render_analytics_html(data):
         {make_bars(data.get("top_npc_trainer_players", []), "Top 10 Players - NPC Trainer Battles", "purple-fill", "🥋")}
         {make_bars(data.get("top_pvp_trainer_players", []), "Top 10 Players - PvP Link Battles", "gold-fill", "🏆")}
     </div>
-    <div class="footer">Server Version v0.3.5.3 &bull; Auto-refreshes every 10 seconds</div>
+    <div class="footer">Server Version v0.3.5.5 &bull; Auto-refreshes every 10 seconds</div>
 </body>
 </html>"""
 
@@ -1424,7 +1433,7 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
                 for p in self.path.split("?")[1].split("&"):
                     if p.startswith("version=") or p.startswith("modVersion="):
                         client_ver = p.split("=")[1].strip()
-            if not client_ver or client_ver != MOD_VERSION:
+            if not is_version_compatible(client_ver):
                 self._send_json({
                     "success": False,
                     "error": "VERSION_MISMATCH",
@@ -1712,7 +1721,7 @@ class GTSHandler(http.server.BaseHTTPRequestHandler):
 
         client_ver = str(req.get("modVersion", req.get("version", ""))).strip()
         # Strict Mod Version Enforcement: Reject legacy or mismatched versions
-        if not client_ver or client_ver != MOD_VERSION:
+        if not is_version_compatible(client_ver):
             self._send_json({
                 "success": False,
                 "error": "VERSION_MISMATCH",

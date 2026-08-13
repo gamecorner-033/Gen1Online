@@ -1,7 +1,7 @@
 # Gen1Online Game Corner - Multiplayer MMO, GTS, Casino Lounge & Online Quests
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Mod Version: v0.3.5.3](https://img.shields.io/badge/version-0.3.5.3-green.svg)](manifest.json)
+[![Mod Version: v0.3.5.5](https://img.shields.io/badge/version-0.3.5.5-green.svg)](manifest.json)
 
 **Gen1Online Game Corner** brings the ultimate multiplayer Pokémon MMO experience together with cooperative quests, persistent progression, and high-stakes casino entertainment in *Pokémon Gen 1 Recomp*.
 

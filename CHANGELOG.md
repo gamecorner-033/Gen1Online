@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.5.5] - 2026-08-13
+
+### Fixed
+
+- **Online Save Connection & Options Menu Routing**: Guaranteed reliable online connection
+  feedback and instant routing to `ONLINE OPTIONS` whenever loading an online save file.
+- **Cross-Build Patch Version Compatibility**: Implemented patch-level version compatibility
+  checking (`is_version_compatible`), allowing clients and servers across the `0.3.5.x` series
+  to connect seamlessly without version mismatch popups.
+- **LÖVE Filesystem Relaunch Guard**: Protected `conf.lua` filesystem symlink initialization
+  and wrapped process pipe closures (`io.popen`) to eliminate in-process relaunch crashes.
+
 ## [0.3.5.3] - 2026-08-12
 
 ### Fixed

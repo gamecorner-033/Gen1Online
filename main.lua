@@ -382,7 +382,7 @@ return function(mod)
           url = url, method = "POST",
           headers = { ["Content-Type"]="application/json",
                       ["Content-Length"]=tostring(#body),
-                      ["X-Mod-Version"]="0.3.5.3" },
+                      ["X-Mod-Version"]="0.3.5.5" },
           source = ltn12 and ltn12.source.string(body),
           sink   = ltn12 and ltn12.sink.table(resp_body),
           timeout = 3.5
@@ -401,7 +401,7 @@ return function(mod)
           fullPath = (love.filesystem.getSaveDirectory() .. "/" .. tempName):gsub("/", "\\")
         end
         if fullPath then
-          local cmd = string.format('curl.exe -s --max-time 4 -X POST -H "Content-Type: application/json" -H "X-Mod-Version: 0.3.5.3" -d @"%s" "%s"', fullPath, url)
+          local cmd = string.format('curl.exe -s --max-time 4 -X POST -H "Content-Type: application/json" -H "X-Mod-Version: 0.3.5.5" -d @"%s" "%s"', fullPath, url)
           local p = io.popen(cmd)
           if p then
             local raw = p:read("*a")
@@ -421,7 +421,7 @@ return function(mod)
           url = targetUrl, method = "POST",
           headers = { ["Content-Type"]="application/json",
                       ["Content-Length"]=tostring(#body),
-                      ["X-Mod-Version"]="0.3.5.3" },
+                      ["X-Mod-Version"]="0.3.5.5" },
           source = ltn12.source.string(body),
           sink   = ltn12.sink.table(resp_body),
           timeout = 3.5
@@ -503,8 +503,9 @@ return function(mod)
     -- 1. Try LuaSec https if available
     if isHttps and https then
       local ok, res, code, headers, status = pcall(https.request, reqTable)
-      if ok and code and code >= 200 and code < 400 then
-        return ok, res, code, headers, status
+      local statusCode = tonumber(code)
+      if ok and statusCode and statusCode >= 200 and statusCode < 400 then
+        return ok, res, statusCode, headers, status
       end
     end
 
@@ -533,22 +534,24 @@ return function(mod)
           timeoutSec, MOD_VERSION, reqTable.url)
       end
 
-      local p = io.popen(cmd)
+      local p = nil
+      pcall(function() p = io.popen(cmd) end)
       if p then
-        local rawResp = p:read("*a")
-        p:close()
+        local rawResp = nil
+        pcall(function() rawResp = p:read("*a") end)
+        pcall(function() p:close() end)
         if tempFile and love and love.filesystem then
-          love.filesystem.remove(tempFile)
+          pcall(function() love.filesystem.remove(tempFile) end)
         end
         if rawResp and #rawResp > 0 then
           if reqTable.sink then
-            reqTable.sink(rawResp)
+            pcall(reqTable.sink, rawResp)
           end
           return true, 1, 200, {}, "HTTP/1.1 200 OK"
         end
       else
         if tempFile and love and love.filesystem then
-          love.filesystem.remove(tempFile)
+          pcall(function() love.filesystem.remove(tempFile) end)
         end
       end
     end
@@ -560,15 +563,28 @@ return function(mod)
       for k, v in pairs(reqTable) do altTable[k] = v end
       altTable.url = httpUrl
       local ok, res, code, headers, status = pcall(http.request, altTable)
-      if ok and code and code >= 200 and code < 400 then
-        return ok, res, code, headers, status
+      local statusCode = tonumber(code)
+      if ok and statusCode and statusCode >= 200 and statusCode < 400 then
+        return ok, res, statusCode, headers, status
       end
     end
 
     return false, nil, nil, nil, nil
   end
 
-  local MOD_VERSION = "0.3.5.3"
+  local MOD_VERSION = "0.3.5.5"
+
+  local function isVersionCompatible(v1, v2)
+    if not v1 or not v2 then return false end
+    local p1 = {}
+    for part in string.gmatch(tostring(v1), "[^.]+") do table.insert(p1, part) end
+    local p2 = {}
+    for part in string.gmatch(tostring(v2), "[^.]+") do table.insert(p2, part) end
+    if #p1 >= 2 and #p2 >= 2 then
+      return p1[1] == p2[1] and p1[2] == p2[2]
+    end
+    return tostring(v1) == tostring(v2)
+  end
 
   -- Generation detection: "gen1" or "gen2"
   local currentGeneration = "gen1"
@@ -629,8 +645,9 @@ return function(mod)
       headers = {
         ["X-Mod-Version"] = MOD_VERSION
       },
-      sink = function(chunk)
+      sink = ltn12 and ltn12.sink.table(response_body) or function(chunk)
         if chunk then table.insert(response_body, chunk) end
+        return 1
       end,
       timeout = timeout or 4.0
     })
@@ -660,12 +677,13 @@ return function(mod)
         ["Content-Length"] = tostring(#jsonStr),
         ["X-Mod-Version"] = MOD_VERSION
       },
-      source = function()
+      source = ltn12 and ltn12.source.string(jsonStr) or function()
         if not sent then sent = true; return jsonStr end
         return nil
       end,
-      sink = function(chunk)
+      sink = ltn12 and ltn12.sink.table(response_body) or function(chunk)
         if chunk then table.insert(response_body, chunk) end
+        return 1
       end,
       timeout = timeout or 4.0
     })
@@ -1084,14 +1102,14 @@ return function(mod)
 
   -- Sync GTS Database with 24/7 Server
   local function fetchGtsServerSync(trainerId)
-    local data = gtsApiGet("/gts/browse", 3.0)
+    local data = gtsApiGet("/gts/browse", 7.0)
     if data and data.success then
       isGtsServerConnected = true
       gtsDb.listings = data.listings or {}
       gtsDb.history = data.history or {}
 
       if trainerId then
-        local claimData = gtsApiGet("/gts/claims?trainerId=" .. tostring(trainerId), 3.0)
+        local claimData = gtsApiGet("/gts/claims?trainerId=" .. tostring(trainerId), 7.0)
         if claimData and claimData.success then
           gtsDb.claim_boxes[tostring(trainerId)] = claimData.claims or {}
         end
@@ -3318,11 +3336,16 @@ return function(mod)
       return
     end
 
+    if isGtsServerConnected then
+      openOnlineOptionsMenu(game)
+      return
+    end
+
     -- 1. Verify Mod Version Handshake with Server First
     local srvInfo = gtsApiGet("/server/info", 3.0)
     if srvInfo and (srvInfo.modVersion or srvInfo.version) then
       local srvVer = srvInfo.modVersion or srvInfo.version
-      if srvVer ~= MOD_VERSION then
+      if not isVersionCompatible(srvVer, MOD_VERSION) then
         local msg = string.format("VERSION MISMATCH!\nSERVER IS ON V%s\nYOUR MOD IS ON V%s\nPLEASE UPDATE TO PLAY!", srvVer, MOD_VERSION)
         game.stack:push(TextBox.new(game, wrapText(msg)))
         return
@@ -3404,47 +3427,47 @@ return function(mod)
       applyPlayerSprite(game, localSelectedSprite)
       writeOnlineSave(game.save)
 
-      local ok = fetchGtsServerSync(tid)
-      if ok and ow and ow.player and ow.map and netOutChannel then
+      fetchGtsServerSync(tid)
+      if ow and ow.player and ow.map and netOutChannel then
         local p = ow.player
         local delta = Collision.DELTA[p.facing] or { 0, 1 }
         local followerSpecies = game.save.party and game.save.party[1] and game.save.party[1].species
 
-        netOutChannel:push({
-          url = GTS_SERVER_URL .. "/gts",
-          body = Json.encode({
-            action = "sync_pos",
-            modVersion = MOD_VERSION,
-            version = MOD_VERSION,
-            gameVersion = select(1, getClientVersionInfo()),
-            recompVersion = select(2, getClientVersionInfo()),
-            trainerId = tid,
-            name = acc.name or currentName,
-            spriteId = localSelectedSprite,
-            title = localTrainerTitle,
-            level = mmoLevel,
-            map = ow.map.id,
-            x = p.cellX,
-            y = p.cellY,
-            px = p.cellX * 16,
-            py = p.cellY * 16,
-            fx = p.cellX - delta[1],
-            fy = p.cellY - delta[2],
-            facing = p.facing,
-            moving = p.moving,
-            species = followerSpecies
+        pcall(function()
+          netOutChannel:push({
+            url = GTS_SERVER_URL .. "/gts",
+            body = Json.encode({
+              action = "sync_pos",
+              modVersion = MOD_VERSION,
+              version = MOD_VERSION,
+              gameVersion = select(1, getClientVersionInfo()),
+              recompVersion = select(2, getClientVersionInfo()),
+              trainerId = tid,
+              name = acc.name or currentName,
+              spriteId = localSelectedSprite,
+              title = localTrainerTitle,
+              level = mmoLevel,
+              map = ow.map.id,
+              x = p.cellX,
+              y = p.cellY,
+              px = p.cellX * 16,
+              py = p.cellY * 16,
+              fx = p.cellX - delta[1],
+              fy = p.cellY - delta[2],
+              facing = p.facing,
+              moving = p.moving,
+              species = followerSpecies
+            })
           })
-        })
-        local connMsg = string.format("CONNECTED TO SERVER!\nONLINE SAVE: %s", acc.name or currentName)
-        game.stack:push(TextBox.new(game, wrapText(connMsg), function()
-          openOnlineOptionsMenu(game)
-        end))
-      else
-        game.stack:push(TextBox.new(game, wrapText("CANNOT CONNECT TO SERVER! CHECK CONNECTION.")))
+        end)
       end
+
+      local connMsg = string.format("CONNECTED TO SERVER!\nONLINE SAVE: %s", acc.name or currentName)
+      game.stack:push(TextBox.new(game, wrapText(connMsg), function()
+        openOnlineOptionsMenu(game)
+      end))
     else
       -- 3. No online save exists yet on device: launch Character Creation without touching local save.lua!
-      openFreshOnlinePlayerMenu(game)
     end
   end
 
@@ -3591,7 +3614,7 @@ return function(mod)
   end)
 
   onEvent("pokemon.received", function(payload)
-    if Game and Game.save then
+    if isGtsServerConnected and Game and Game.save then
       performForcedSave(Game)
       syncLocalProfile(Game, 0)
     end
@@ -3599,7 +3622,7 @@ return function(mod)
 
   -- 5. Trainer Badges & Story Milestone Flags
   onEvent("flag.changed", function(payload)
-    if Game and Game.save then
+    if isGtsServerConnected and Game and Game.save then
       performForcedSave(Game)
       syncLocalProfile(Game, 0)
     end
@@ -3609,9 +3632,11 @@ return function(mod)
   onEvent("world.blacked_out", function(payload)
     if Game and Game.save then
       Game.save.blackoutCount = (Game.save.blackoutCount or 0) + 1
-      saveOnlineAccount(Game.save)
-      performForcedSave(Game)
-      syncLocalProfile(Game, 0)
+      if isGtsServerConnected then
+        saveOnlineAccount(Game.save)
+        performForcedSave(Game)
+        syncLocalProfile(Game, 0)
+      end
     end
   end)
 
@@ -3619,7 +3644,7 @@ return function(mod)
     -- 7. Nurse Joy Healing Finished
     local origFinishNurseHeal = OverworldState.finishNurseHeal
     OverworldState.finishNurseHeal = function(self, bye, onDone)
-      if Game and Game.save then
+      if isGtsServerConnected and Game and Game.save then
         performForcedSave(Game)
         syncLocalProfile(Game, 0)
       end
