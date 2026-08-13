@@ -382,7 +382,7 @@ return function(mod)
           url = url, method = "POST",
           headers = { ["Content-Type"]="application/json",
                       ["Content-Length"]=tostring(#body),
-                      ["X-Mod-Version"]="0.3.5.57" },
+                      ["X-Mod-Version"]="0.3.5.58" },
           source = ltn12 and ltn12.source.string(body),
           sink   = ltn12 and ltn12.sink.table(resp_body),
           timeout = 3.5
@@ -401,7 +401,7 @@ return function(mod)
           fullPath = (love.filesystem.getSaveDirectory() .. "/" .. tempName):gsub("/", "\\")
         end
         if fullPath then
-          local cmd = string.format('curl.exe -s --max-time 4 -X POST -H "Content-Type: application/json" -H "X-Mod-Version: 0.3.5.57" -d @"%s" "%s"', fullPath, url)
+          local cmd = string.format('curl.exe -s --max-time 4 -X POST -H "Content-Type: application/json" -H "X-Mod-Version: 0.3.5.58" -d @"%s" "%s"', fullPath, url)
           local p = io.popen(cmd)
           if p then
             local raw = p:read("*a")
@@ -421,7 +421,7 @@ return function(mod)
           url = targetUrl, method = "POST",
           headers = { ["Content-Type"]="application/json",
                       ["Content-Length"]=tostring(#body),
-                      ["X-Mod-Version"]="0.3.5.57" },
+                      ["X-Mod-Version"]="0.3.5.58" },
           source = ltn12.source.string(body),
           sink   = ltn12.sink.table(resp_body),
           timeout = 3.5
@@ -497,12 +497,19 @@ return function(mod)
 
   -- Universal Transport Helper (Supports direct HTTPS via LuaSec, curl.exe popen fallback for Windows/Linux/Mac, and HTTP)
   local function makeHttpRequest(reqTable)
+    reqTable = reqTable or {}
     reqTable.timeout = reqTable.timeout or 4.0
     local isHttps = (reqTable.url:sub(1, 5) == "https")
+    local postData = reqTable.postData or reqTable.bodyData
 
     -- 1. Try LuaSec https if available
     if isHttps and https then
-      local ok, res, code, headers, status = pcall(https.request, reqTable)
+      local secTable = {}
+      for k, v in pairs(reqTable) do secTable[k] = v end
+      if postData and ltn12 then
+        secTable.source = ltn12.source.string(postData)
+      end
+      local ok, res, code, headers, status = pcall(https.request, secTable)
       local statusCode = tonumber(code)
       if ok and statusCode and statusCode >= 200 and statusCode < 400 then
         return ok, res, statusCode, headers, status
@@ -516,14 +523,17 @@ return function(mod)
       local tempFile = nil
       local cmd = nil
 
-      if isPost and reqTable.source and love and love.filesystem then
-        local chunks = {}
-        while true do
-          local chunk = reqTable.source()
-          if not chunk then break end
-          table.insert(chunks, chunk)
+      if isPost and love and love.filesystem then
+        local bodyStr = postData or ""
+        if not postData and reqTable.source then
+          local chunks = {}
+          while true do
+            local chunk = reqTable.source()
+            if not chunk then break end
+            table.insert(chunks, chunk)
+          end
+          bodyStr = table.concat(chunks)
         end
-        local bodyStr = table.concat(chunks)
         tempFile = "tmp_req_" .. tostring(os.time()) .. "_" .. tostring(love.math.random(1000, 9999)) .. ".json"
         love.filesystem.write(tempFile, bodyStr)
         local fullTempPath = (love.filesystem.getSaveDirectory() .. "/" .. tempFile):gsub("/", "\\")
@@ -562,6 +572,9 @@ return function(mod)
       local altTable = {}
       for k, v in pairs(reqTable) do altTable[k] = v end
       altTable.url = httpUrl
+      if postData and ltn12 then
+        altTable.source = ltn12.source.string(postData)
+      end
       local ok, res, code, headers, status = pcall(http.request, altTable)
       local statusCode = tonumber(code)
       if ok and statusCode and statusCode >= 200 and statusCode < 400 then
@@ -572,7 +585,7 @@ return function(mod)
     return false, nil, nil, nil, nil
   end
 
-  local MOD_VERSION = "0.3.5.57"
+  local MOD_VERSION = "0.3.5.58"
 
   local function isVersionCompatible(v1, v2)
     if not v1 or not v2 then return false end
@@ -668,24 +681,20 @@ return function(mod)
     payload.recompVersion = rVer
     local jsonStr = Json.encode(payload)
     local response_body = {}
-    local sent = false
     local ok, res, code, headers, status = makeHttpRequest({
       url = GTS_SERVER_URL .. "/gts",
       method = "POST",
+      postData = jsonStr,
       headers = {
         ["Content-Type"] = "application/json",
         ["Content-Length"] = tostring(#jsonStr),
         ["X-Mod-Version"] = MOD_VERSION
       },
-      source = ltn12 and ltn12.source.string(jsonStr) or function()
-        if not sent then sent = true; return jsonStr end
-        return nil
-      end,
       sink = ltn12 and ltn12.sink.table(response_body) or function(chunk)
         if chunk then table.insert(response_body, chunk) end
         return 1
       end,
-      timeout = timeout or 4.0
+      timeout = timeout or 6.0
     })
     if ok and #response_body > 0 then
       local str = table.concat(response_body)

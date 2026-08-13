@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.5.58] - 2026-08-13
+
+### Fixed
+
+- **HTTP POST Body Preservation Across Retries**: Fixed a critical bug in `makeHttpRequest` where
+  an LTN12 source function was drained during LuaSec/HTTPS attempts, causing fallback steps (`curl.exe`
+  or `socket.http`) to send empty `{}` POST payloads. Added explicit `postData` preservation to guarantee
+  player registration (`register_player`) payloads are transmitted fully on all platforms.
+
 ## [0.3.5.57] - 2026-08-13
 
 ### Fixed
