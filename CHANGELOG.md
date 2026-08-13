@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.5.1] - 2026-08-12
+
+### Fixed
+
+- **Map Scene & Story Cutscene Persistence**: Fixed an issue in Gen 2 where
+  re-entering maps would re-play initial scenes (such as Elm's Lab starter
+  dialogue) or block routes (such as the Route 29 NPC woman stopping the player).
+- **Bi-directional `mapScenes` & `scriptMem` Sync**: Full map scene ID tables
+  and script memory are now preserved and synced between the game engine, save files,
+  and server host backups.
+- **Human-Readable Flag Crosswalks**: Integrated complete constant mappings for
+  all Gen 1 & Gen 2 event flags (`EVENT_GOT_A_POKEMON_FROM_ELM`, `EVENT_GOT_STARTER`, etc.)
+  with real-time hooks on `Events.set` and `World.setMapScene`.
+- **Server-Side Player Backup Cards**: Server host machine automatically outputs
+  individual `Players Backup/Player_<ID>_<Name>.json` files logging account details,
+  recovery tokens, completed event flags, map scene states, badges, party, and stats.
+
 ## [0.3.5.0] - 2026-08-11
 
 ### Added
