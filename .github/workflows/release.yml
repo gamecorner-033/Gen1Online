@@ -1,0 +1,31 @@
+name: Create Mod Release Zip
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    name: Build & Publish Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Package Mod Zip
+        run: |
+          # Package mod contents into mod.zip (excluding git & workflow internals)
+          zip -r mod.zip . -x "*.git*" ".github/*" "__pycache__/*" "*.pyc"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ github.ref_name }}
+          files: mod.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
