@@ -201,21 +201,7 @@ return function(mod)
       end
     end
 
-    -- 5. Restore synced events & engineFlags back into live World if present
-    if worldObj then
-      if worldObj.events and worldObj.events.restore then
-        pcall(function() worldObj.events:restore(save.events) end)
-      end
-      if worldObj.setEngineFlag and type(save.engineFlags) == "table" then
-        for eId, eVal in pairs(save.engineFlags) do
-          if eVal == true then
-            pcall(function() worldObj:setEngineFlag(eId, true) end)
-          end
-        end
-      end
-    end
-
-    -- 6. Generate human-readable array of completed flag names for backup file
+    -- 5. Generate human-readable array of completed flag names for backup file
     local completedNames = {}
     for name, val in pairs(save.flags) do
       if val == true then
@@ -245,10 +231,6 @@ return function(mod)
           end
         end
         if origSet then origSet(save, name) end
-        if Game and Game.save then syncSaveFlags(Game.save, Game.world) end
-        if isGtsServerConnected and Game and Game.save then
-          if performForcedSave then performForcedSave(Game) end
-        end
       end
 
       FlagsMod.clear = function(save, name)
@@ -262,10 +244,6 @@ return function(mod)
           end
         end
         if origClear then origClear(save, name) end
-        if Game and Game.save then syncSaveFlags(Game.save, Game.world) end
-        if isGtsServerConnected and Game and Game.save then
-          if performForcedSave then performForcedSave(Game) end
-        end
       end
 
       FlagsMod.get = function(save, name)
@@ -273,52 +251,6 @@ return function(mod)
         save.flags = save.flags or {}
         if origGet then return origGet(save, name) end
         return save.flags[name] == true
-      end
-    end
-
-    -- Hook Gen 2 Events.set
-    local okEv, EventsMod = pcall(require, "src.world.gen2.Events")
-    if okEv and EventsMod then
-      local origEvSet = EventsMod.set
-      EventsMod.set = function(self, id, value)
-        if origEvSet then origEvSet(self, id, value) end
-        if Game and Game.save then
-          syncSaveFlags(Game.save, Game.world)
-          if isGtsServerConnected and performForcedSave then
-            performForcedSave(Game)
-          end
-        end
-      end
-    end
-
-    -- Hook Gen 2 World:setMapScene & World:setScene
-    local okW, WorldMod = pcall(require, "src.world.gen2.World")
-    if okW and WorldMod then
-      local origSetMapScene = WorldMod.setMapScene
-      local origSetScene = WorldMod.setScene
-
-      if origSetMapScene then
-        WorldMod.setMapScene = function(self, group, mapNum, scene)
-          origSetMapScene(self, group, mapNum, scene)
-          if Game and Game.save then
-            syncSaveFlags(Game.save, self)
-            if isGtsServerConnected and performForcedSave then
-              performForcedSave(Game)
-            end
-          end
-        end
-      end
-
-      if origSetScene then
-        WorldMod.setScene = function(self, scene)
-          origSetScene(self, scene)
-          if Game and Game.save then
-            syncSaveFlags(Game.save, self)
-            if isGtsServerConnected and performForcedSave then
-              performForcedSave(Game)
-            end
-          end
-        end
       end
     end
   end
@@ -450,7 +382,7 @@ return function(mod)
           url = url, method = "POST",
           headers = { ["Content-Type"]="application/json",
                       ["Content-Length"]=tostring(#body),
-                      ["X-Mod-Version"]="0.3.5.2" },
+                      ["X-Mod-Version"]="0.3.5.3" },
           source = ltn12 and ltn12.source.string(body),
           sink   = ltn12 and ltn12.sink.table(resp_body),
           timeout = 3.5
@@ -469,7 +401,7 @@ return function(mod)
           fullPath = (love.filesystem.getSaveDirectory() .. "/" .. tempName):gsub("/", "\\")
         end
         if fullPath then
-          local cmd = string.format('curl.exe -s --max-time 4 -X POST -H "Content-Type: application/json" -H "X-Mod-Version: 0.3.5.2" -d @"%s" "%s"', fullPath, url)
+          local cmd = string.format('curl.exe -s --max-time 4 -X POST -H "Content-Type: application/json" -H "X-Mod-Version: 0.3.5.3" -d @"%s" "%s"', fullPath, url)
           local p = io.popen(cmd)
           if p then
             local raw = p:read("*a")
@@ -489,7 +421,7 @@ return function(mod)
           url = targetUrl, method = "POST",
           headers = { ["Content-Type"]="application/json",
                       ["Content-Length"]=tostring(#body),
-                      ["X-Mod-Version"]="0.3.5.2" },
+                      ["X-Mod-Version"]="0.3.5.3" },
           source = ltn12.source.string(body),
           sink   = ltn12.sink.table(resp_body),
           timeout = 3.5
@@ -636,7 +568,7 @@ return function(mod)
     return false, nil, nil, nil, nil
   end
 
-  local MOD_VERSION = "0.3.5.2"
+  local MOD_VERSION = "0.3.5.3"
 
   -- Generation detection: "gen1" or "gen2"
   local currentGeneration = "gen1"

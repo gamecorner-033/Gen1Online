@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.5.3] - 2026-08-12
+
+### Fixed
+
+- **Oak Speech Intro Freeze Fix**: Fixed a freeze occurring after Professor Oak's
+  speech (*"I'll be seeing you later!"*) during the New Game overworld transition.
+  Removed an invasive hook on `Events.set` that interfered with `World:loadPlayerData`
+  initial flag seeding.
+- **Cross-Platform Android & Mobile Transport**: Resolved network connection errors
+  on Android devices by standardizing HTTP tunnel routing over native LuaSocket,
+  avoiding `127.0.0.1` loopback redirects and `curl.exe` dependencies on mobile.
+
 ## [0.3.5.2] - 2026-08-12
 
 ### Changed

@@ -1,7 +1,7 @@
 {
   "id": "gen1online-gamecorner",
   "name": "Gen 1 Online - Game Corner Edition",
-  "version": "0.3.5.2",
+  "version": "0.3.5.3",
   "entry": "main.lua",
   "author": "Gamecorner33, martin2844 (Original Blackjack Mod Creator), Shane Hudson (Double Battles Framework), and Antigravity",
   "description": "Integrated Gen 1 Online MMO, 24/7 GTS Trading, PVP Battles, Casino Lounge, Live Multiplayer Online Texas Hold'em, and 2v2 Double Battles.",
