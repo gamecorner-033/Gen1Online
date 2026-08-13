@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.5.57] - 2026-08-13
+
+### Fixed
+
+- **Fresh Device Character Creation Launch**: Fixed an issue where hitting "CONNECT TO SERVER"
+  on secondary/remote devices without an existing `save_online_gold.lua` file did nothing. Restored
+  the `openFreshOnlinePlayerMenu` invocation to prompt for Name & Avatar creation.
+
 ## [0.3.5.56] - 2026-08-13
 
 ### Changed
