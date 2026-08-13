@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.5.2] - 2026-08-12
+
+### Changed
+
+- **Exclusive Gold (Gen 2) Connection Rule**: Strictly enforced that Pokémon Gold
+  (Gen 2) is the required game version for connecting to the server. Non-Gold game
+  boots will prompt the player to launch Pokémon Gold to play online.
+- **Improved Network Diagnostics & Fallback**: Enhanced HTTP fallback to system `curl.exe`
+  when LuaSec fails or SSL certs are untrusted, ensuring exact server error messages
+  are reported instead of generic network timeouts.
+
 ## [0.3.5.1] - 2026-08-12
 
 ### Fixed

@@ -450,7 +450,7 @@ return function(mod)
           url = url, method = "POST",
           headers = { ["Content-Type"]="application/json",
                       ["Content-Length"]=tostring(#body),
-                      ["X-Mod-Version"]="0.3.5.1" },
+                      ["X-Mod-Version"]="0.3.5.2" },
           source = ltn12 and ltn12.source.string(body),
           sink   = ltn12 and ltn12.sink.table(resp_body),
           timeout = 3.5
@@ -469,7 +469,7 @@ return function(mod)
           fullPath = (love.filesystem.getSaveDirectory() .. "/" .. tempName):gsub("/", "\\")
         end
         if fullPath then
-          local cmd = string.format('curl.exe -s --max-time 4 -X POST -H "Content-Type: application/json" -H "X-Mod-Version: 0.3.5.1" -d @"%s" "%s"', fullPath, url)
+          local cmd = string.format('curl.exe -s --max-time 4 -X POST -H "Content-Type: application/json" -H "X-Mod-Version: 0.3.5.2" -d @"%s" "%s"', fullPath, url)
           local p = io.popen(cmd)
           if p then
             local raw = p:read("*a")
@@ -482,14 +482,14 @@ return function(mod)
         end
       end
 
-      -- 3. Try socket.http for direct HTTP or local fallback
-      local targetUrl = isHttps and url:gsub("^https://[^/]+", "http://127.0.0.1:7779") or url
+      -- 3. Try socket.http over HTTP (converts https:// -> http:// for Android & cross-platform)
+      local targetUrl = isHttps and url:gsub("^https://", "http://") or url
       if http and ltn12 then
         local ok, err = pcall(http.request, {
           url = targetUrl, method = "POST",
           headers = { ["Content-Type"]="application/json",
                       ["Content-Length"]=tostring(#body),
-                      ["X-Mod-Version"]="0.3.5.1" },
+                      ["X-Mod-Version"]="0.3.5.2" },
           source = ltn12.source.string(body),
           sink   = ltn12.sink.table(resp_body),
           timeout = 3.5
@@ -576,9 +576,9 @@ return function(mod)
       end
     end
 
-    -- 2. Try curl.exe for HTTPS when LuaSec is not available in Love2D
-    if isHttps and not https then
-      local timeoutSec = math.ceil(reqTable.timeout or 4.0)
+    -- 2. Try curl.exe for HTTPS when LuaSec fails or is not available
+    if isHttps then
+      local timeoutSec = math.ceil(reqTable.timeout or 6.0)
       local isPost = (reqTable.method == "POST")
       local tempFile = nil
       local cmd = nil
@@ -621,26 +621,22 @@ return function(mod)
       end
     end
 
-    -- 3. Standard HTTP via socket.http
-    if http and not isHttps then
-      local ok, res, code, headers, status = pcall(http.request, reqTable)
-      if ok and code then return ok, res, code, headers, status end
-    end
-
-    -- 4. Fallback to local server http://127.0.0.1:7779 if Cloudflare tunnel fails
-    if isHttps and http then
-      local fallbackUrl = reqTable.url:gsub("^https://[^/]+", "http://127.0.0.1:7779")
+    -- 3. Cross-platform HTTP via socket.http (converts https:// -> http:// for Android & non-curl devices)
+    if http then
+      local httpUrl = isHttps and reqTable.url:gsub("^https://", "http://") or reqTable.url
       local altTable = {}
       for k, v in pairs(reqTable) do altTable[k] = v end
-      altTable.url = fallbackUrl
+      altTable.url = httpUrl
       local ok, res, code, headers, status = pcall(http.request, altTable)
-      if ok and code then return ok, res, code, headers, status end
+      if ok and code and code >= 200 and code < 400 then
+        return ok, res, code, headers, status
+      end
     end
 
     return false, nil, nil, nil, nil
   end
 
-  local MOD_VERSION = "0.3.5.1"
+  local MOD_VERSION = "0.3.5.2"
 
   -- Generation detection: "gen1" or "gen2"
   local currentGeneration = "gen1"
@@ -2720,7 +2716,7 @@ return function(mod)
         if not enteredToken or #enteredToken == 0 then return end
         enteredToken = enteredToken:gsub("%s+", ""):upper()
 
-        local res = gtsApiPost({ action = "redeem_token", token = enteredToken }, 3.0)
+        local res = gtsApiPost({ action = "redeem_token", token = enteredToken }, 6.0)
         if res and res.success and res.account then
           local acc = res.account
           mmoLevel = acc.level or 1
@@ -2823,7 +2819,7 @@ return function(mod)
               title = localTrainerTitle,
               badges = 0,
               pokedexCount = 0
-            }, 2.0)
+            }, 6.0)
 
             if res and res.success and res.account then
               local acc = res.account
@@ -2950,9 +2946,20 @@ return function(mod)
                 openOnlineOptionsMenu(game)
               end))
             else
-              local err = (res and res.error) or "NETWORK_ERROR"
-              local errMsg = string.format("COULD NOT CREATE PLAYER!\n%s", err)
-              game.stack:push(TextBox.new(game, wrapText(errMsg)))
+              local errCode = (res and res.error) or "NETWORK_ERROR"
+              local errMsg = nil
+              if errCode == "NAME_TAKEN" then
+                errMsg = string.format("NAME TAKEN!\n'%s' IS ALREADY REGISTERED ON SERVER.\nPLEASE CHOOSE A DIFFERENT NAME OR REDEEM YOUR TOKEN!", chosenName)
+              elseif res and res.message then
+                errMsg = string.format("COULD NOT CREATE PLAYER!\n%s", res.message)
+              else
+                errMsg = string.format("COULD NOT CREATE PLAYER!\nNETWORK ERROR: %s", errCode)
+              end
+              game.stack:push(TextBox.new(game, wrapText(errMsg), function()
+                if errCode == "NAME_TAKEN" then
+                  openFreshOnlinePlayerMenu(game)
+                end
+              end))
             end
           end
         })
@@ -3373,9 +3380,9 @@ return function(mod)
   end
 
   handleConnectToServer = function(game)
-    -- 0. Enforce Pokémon Gold (Gen 2) Only
     if not isGen2 then
-      game.stack:push(TextBox.new(game, wrapText("THE ONLINE SERVER HAS MIGRATED EXCLUSIVELY TO POKEMON GOLD (GEN 2)!\nPLEASE LAUNCH POKEMON GOLD TO PLAY ONLINE.")))
+      local msg = "CONNECT ERROR!\nSERVER HAS MIGRATED EXCLUSIVELY TO POKÉMON GOLD (GEN 2).\nPLEASE LAUNCH POKÉMON GOLD TO CONNECT."
+      game.stack:push(TextBox.new(game, wrapText(msg)))
       return
     end
 

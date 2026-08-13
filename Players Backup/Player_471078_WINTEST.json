@@ -1,0 +1,63 @@
+{
+  "trainerId": "471078",
+  "name": "WINTEST",
+  "recoveryToken": "44A51B26",
+  "level": 1,
+  "xp": 0,
+  "spriteId": "SPRITE_RED",
+  "title": "POK\u00e9MON TRAINER",
+  "badges": {
+    "count": 0,
+    "list": []
+  },
+  "pokedex": {
+    "count": 0
+  },
+  "party": [],
+  "eventFlagsSummary": {
+    "totalCompletedCount": 0,
+    "completedFlags": [],
+    "mapScenes": {},
+    "allFlagsState": {}
+  },
+  "gameStats": {
+    "money": 0,
+    "coins": 0,
+    "currentMap": "UNKNOWN",
+    "lastSeen": 1786584615
+  },
+  "createdAt": 1786584615,
+  "lastSeen": 1786584615,
+  "profile": {
+    "trainerId": "471078",
+    "name": "WINTEST",
+    "spriteId": "SPRITE_RED",
+    "title": "POK\u00e9MON TRAINER",
+    "level": 1,
+    "xp": 0,
+    "badges": 0,
+    "pokedexCount": 0,
+    "favoriteMon": "PIKACHU",
+    "lastSeen": 1786584615
+  },
+  "account": {
+    "trainerId": "471078",
+    "name": "WINTEST",
+    "spriteId": "SPRITE_RED",
+    "level": 1,
+    "xp": 0,
+    "token": "44A51B26",
+    "badges": 0,
+    "pokedexCount": 0,
+    "wildBattles": 0,
+    "trainerBattles": 0,
+    "pvpWins": 0,
+    "pvpLosses": 0,
+    "breedingCount": 0,
+    "title": "POK\u00e9MON TRAINER",
+    "favoriteMon": "PIKACHU",
+    "isBanned": false,
+    "createdAt": 1786584615,
+    "lastSeen": 1786584615
+  }
+}
