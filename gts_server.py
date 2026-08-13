@@ -30,7 +30,7 @@ PORT = int(os.environ.get("PORT", 7779))
 DB_FILE = os.environ.get("GTS_DB_PATH", os.path.join(os.path.dirname(__file__), "gts_database.json"))
 BACKUP_DB_FILE = os.environ.get("GTS_BACKUP_PATH", os.path.join(os.path.dirname(__file__), "players_backup.json"))
 
-MOD_VERSION = "0.3.5.5"
+MOD_VERSION = "0.3.5.56"
 
 def is_version_compatible(client_ver, server_ver=MOD_VERSION):
     if not client_ver:
@@ -1387,7 +1387,7 @@ def render_analytics_html(data):
         {make_bars(data.get("top_npc_trainer_players", []), "Top 10 Players - NPC Trainer Battles", "purple-fill", "🥋")}
         {make_bars(data.get("top_pvp_trainer_players", []), "Top 10 Players - PvP Link Battles", "gold-fill", "🏆")}
     </div>
-    <div class="footer">Server Version v0.3.5.5 &bull; Auto-refreshes every 10 seconds</div>
+    <div class="footer">Server Version v0.3.5.56 &bull; Auto-refreshes every 10 seconds</div>
 </body>
 </html>"""
 

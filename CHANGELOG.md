@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.5.56] - 2026-08-13
+
+### Changed
+
+- **Cloudflare Tunnel URL Update**: Updated official Cloudflare tunnel endpoint to
+  `katrina-quick-bugs-predicted.trycloudflare.com`.
+
 ## [0.3.5.5] - 2026-08-13
 
 ### Fixed

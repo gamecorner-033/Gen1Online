@@ -382,7 +382,7 @@ return function(mod)
           url = url, method = "POST",
           headers = { ["Content-Type"]="application/json",
                       ["Content-Length"]=tostring(#body),
-                      ["X-Mod-Version"]="0.3.5.5" },
+                      ["X-Mod-Version"]="0.3.5.56" },
           source = ltn12 and ltn12.source.string(body),
           sink   = ltn12 and ltn12.sink.table(resp_body),
           timeout = 3.5
@@ -401,7 +401,7 @@ return function(mod)
           fullPath = (love.filesystem.getSaveDirectory() .. "/" .. tempName):gsub("/", "\\")
         end
         if fullPath then
-          local cmd = string.format('curl.exe -s --max-time 4 -X POST -H "Content-Type: application/json" -H "X-Mod-Version: 0.3.5.5" -d @"%s" "%s"', fullPath, url)
+          local cmd = string.format('curl.exe -s --max-time 4 -X POST -H "Content-Type: application/json" -H "X-Mod-Version: 0.3.5.56" -d @"%s" "%s"', fullPath, url)
           local p = io.popen(cmd)
           if p then
             local raw = p:read("*a")
@@ -421,7 +421,7 @@ return function(mod)
           url = targetUrl, method = "POST",
           headers = { ["Content-Type"]="application/json",
                       ["Content-Length"]=tostring(#body),
-                      ["X-Mod-Version"]="0.3.5.5" },
+                      ["X-Mod-Version"]="0.3.5.56" },
           source = ltn12.source.string(body),
           sink   = ltn12.sink.table(resp_body),
           timeout = 3.5
@@ -572,7 +572,7 @@ return function(mod)
     return false, nil, nil, nil, nil
   end
 
-  local MOD_VERSION = "0.3.5.5"
+  local MOD_VERSION = "0.3.5.56"
 
   local function isVersionCompatible(v1, v2)
     if not v1 or not v2 then return false end
