@@ -382,7 +382,7 @@ return function(mod)
           url = url, method = "POST",
           headers = { ["Content-Type"]="application/json",
                       ["Content-Length"]=tostring(#body),
-                      ["X-Mod-Version"]="0.3.5.58" },
+                      ["X-Mod-Version"]="0.3.5.59" },
           source = ltn12 and ltn12.source.string(body),
           sink   = ltn12 and ltn12.sink.table(resp_body),
           timeout = 3.5
@@ -401,7 +401,7 @@ return function(mod)
           fullPath = (love.filesystem.getSaveDirectory() .. "/" .. tempName):gsub("/", "\\")
         end
         if fullPath then
-          local cmd = string.format('curl.exe -s --max-time 4 -X POST -H "Content-Type: application/json" -H "X-Mod-Version: 0.3.5.58" -d @"%s" "%s"', fullPath, url)
+          local cmd = string.format('curl.exe -s --max-time 4 -X POST -H "Content-Type: application/json" -H "X-Mod-Version: 0.3.5.59" -d @"%s" "%s"', fullPath, url)
           local p = io.popen(cmd)
           if p then
             local raw = p:read("*a")
@@ -421,7 +421,7 @@ return function(mod)
           url = targetUrl, method = "POST",
           headers = { ["Content-Type"]="application/json",
                       ["Content-Length"]=tostring(#body),
-                      ["X-Mod-Version"]="0.3.5.58" },
+                      ["X-Mod-Version"]="0.3.5.59" },
           source = ltn12.source.string(body),
           sink   = ltn12.sink.table(resp_body),
           timeout = 3.5
@@ -585,7 +585,7 @@ return function(mod)
     return false, nil, nil, nil, nil
   end
 
-  local MOD_VERSION = "0.3.5.58"
+  local MOD_VERSION = "0.3.5.59"
 
   local function isVersionCompatible(v1, v2)
     if not v1 or not v2 then return false end
@@ -1368,6 +1368,8 @@ return function(mod)
     save.onlineAccount.title = localTrainerTitle
     save.onlineAccount.favoriteMon = localFavoriteMon
     save.onlineAccount.blackouts = save.blackoutCount or 0
+    save.onlineAccount.pvpWins = save.onlineAccount.pvpWins or 0
+    save.onlineAccount.pvpLosses = save.onlineAccount.pvpLosses or 0
   end
 
   syncLocalProfile = function(game, winDelta)
@@ -1530,11 +1532,15 @@ return function(mod)
         gtsApiPost({ action = "clear_battle_room", roomId = roomId }, 0.5)
 
         if self.result == "win" then
+          game.save.onlineAccount = game.save.onlineAccount or {}
+          game.save.onlineAccount.pvpWins = (game.save.onlineAccount.pvpWins or 0) + 1
           addMmoXp(game, "pvp_win", nil, { opponentName = opponentName or "TRAINER", opponentId = opponentId or "0" })
           syncLocalProfile(game, 1)
           performForcedSave(game)
           game.stack:push(TextBox.new(game, string.format("VICTORY!\nDEFEATED %s IN PVP!\n(+100 MMO XP)", opponentName or "TRAINER")))
         else
+          game.save.onlineAccount = game.save.onlineAccount or {}
+          game.save.onlineAccount.pvpLosses = (game.save.onlineAccount.pvpLosses or 0) + 1
           addMmoXp(game, "pvp_loss", nil, { opponentName = opponentName or "TRAINER", opponentId = opponentId or "0" })
           performForcedSave(game)
           game.stack:push(TextBox.new(game, string.format("LINK BATTLE FINISHED\nWITH %s!\n(+25 MMO XP)", opponentName or "TRAINER")))
@@ -3927,6 +3933,7 @@ return function(mod)
   local origInteract = OverworldState.interact
   OverworldState.interact = function(self)
     if isWaitingForChallenge then return end
+    local curGame = self.game or Game
 
     local p1 = self.player
     local fx, fy = p1:facingCell()
@@ -3941,18 +3948,18 @@ return function(mod)
           {
             label = "VIEW TRAINER CARD",
             onSelect = function()
-              openTrainerCardScreen(Game, targetTid, rawData)
+              openTrainerCardScreen(curGame, targetTid, rawData)
             end
           },
           {
             label = "PVP 1V1 SINGLES",
             onSelect = function()
-              if not Game.save or not Game.save.party or #Game.save.party == 0 then
-                Game.stack:push(TextBox.new(Game, wrapText("YOU NEED AT LEAST 1 POKéMON IN YOUR PARTY TO BATTLE!")))
+              if not curGame.save or not curGame.save.party or #curGame.save.party == 0 then
+                curGame.stack:push(TextBox.new(curGame, wrapText("YOU NEED AT LEAST 1 POKéMON IN YOUR PARTY TO BATTLE!")))
                 return
               end
-              local myId, myName = getTrainerInfo(Game.save)
-              local myPackedParty = Protocol.packParty(Game.save.party)
+              local myId, myName = getTrainerInfo(curGame.save)
+              local myPackedParty = Protocol.packParty(curGame.save.party)
               local linkSeed = math.random(1, 2^30)
               local roomId = "BATTLE_"
                 .. tostring(math.min(tonumber(myId) or 0, tonumber(targetTid) or 0))
@@ -3973,18 +3980,18 @@ return function(mod)
                 seed = linkSeed,
                 roomId = roomId
               }, 1.5)
-              Game.stack:push(TextBox.new(Game, string.format("WAITING FOR %s\nTO ACCEPT 1V1 PVP...", pName)))
+              curGame.stack:push(TextBox.new(curGame, string.format("WAITING FOR %s\nTO ACCEPT 1V1 PVP...", pName)))
             end
           },
           {
             label = "PVP 2V2 DOUBLES",
             onSelect = function()
-              if not Game.save or not Game.save.party or #Game.save.party == 0 then
-                Game.stack:push(TextBox.new(Game, wrapText("YOU NEED AT LEAST 1 POKéMON IN YOUR PARTY TO BATTLE!")))
+              if not curGame.save or not curGame.save.party or #curGame.save.party == 0 then
+                curGame.stack:push(TextBox.new(curGame, wrapText("YOU NEED AT LEAST 1 POKéMON IN YOUR PARTY TO BATTLE!")))
                 return
               end
-              local myId, myName = getTrainerInfo(Game.save)
-              local myPackedParty = Protocol.packParty(Game.save.party)
+              local myId, myName = getTrainerInfo(curGame.save)
+              local myPackedParty = Protocol.packParty(curGame.save.party)
               local linkSeed = math.random(1, 2^30)
               local roomId = "BATTLE_DBL_"
                 .. tostring(math.min(tonumber(myId) or 0, tonumber(targetTid) or 0))
@@ -4005,17 +4012,17 @@ return function(mod)
                 seed = linkSeed,
                 roomId = roomId
               }, 1.5)
-              Game.stack:push(TextBox.new(Game, string.format("WAITING FOR %s\nTO ACCEPT 2V2 DOUBLES...", pName)))
+              curGame.stack:push(TextBox.new(curGame, string.format("WAITING FOR %s\nTO ACCEPT 2V2 DOUBLES...", pName)))
             end
           },
           {
             label = "LINK TRADE",
             onSelect = function()
-              if not Game.save or not Game.save.party or #Game.save.party == 0 then
-                Game.stack:push(TextBox.new(Game, wrapText("YOU NEED AT LEAST 1 POKéMON IN YOUR PARTY TO TRADE!")))
+              if not curGame.save or not curGame.save.party or #curGame.save.party == 0 then
+                curGame.stack:push(TextBox.new(curGame, wrapText("YOU NEED AT LEAST 1 POKéMON IN YOUR PARTY TO TRADE!")))
                 return
               end
-              local myId, myName = getTrainerInfo(Game.save)
+              local myId, myName = getTrainerInfo(curGame.save)
               local roomId = "TRADE_"
                 .. tostring(math.min(tonumber(myId) or 0, tonumber(targetTid) or 0))
                 .. "_"
@@ -4033,12 +4040,12 @@ return function(mod)
                 challengeType = "TRADE",
                 roomId = roomId
               }, 1.5)
-              Game.stack:push(TextBox.new(Game, wrapText(string.format("WAITING FOR %s TO ACCEPT TRADE...", pName))))
+              curGame.stack:push(TextBox.new(curGame, wrapText(string.format("WAITING FOR %s TO ACCEPT TRADE...", pName))))
             end
           },
           { label = "CANCEL", onSelect = function() end }
         }
-        Game.stack:push(Menu.new(Game, items, { tx = 1, ty = 1, tw = 16, th = 8 }))
+        curGame.stack:push(Menu.new(curGame, items, { tx = 1, ty = 1, tw = 16, th = 8 }))
         return
       end
     end

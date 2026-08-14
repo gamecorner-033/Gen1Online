@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.5.59] - 2026-08-13
+
+### Fixed
+
+- **Overworld PVP & Link Trade Interaction Crash**: Fixed a nil global reference (`Game.save` / `Game.stack`)
+  in `OverworldState.interact` by replacing it with `curGame = self.game or Game`. Single battles and Link
+  Trading can now be initiated from any player in the overworld without crashing on Gen 2 / Gold.
+- **Link Trade Protocol Verification**: Confirmed standard Link Trade session and protocol initialization
+  via `LinkState.startMode("trade", isHostPlayer)` for full party exchange and trade evolutions.
+- **Battle Record Persistence**: Verified PvP wins, losses, and battle logs are tied to `save.onlineAccount`
+  and synced to the online server profile & web dashboard leaderboards.
+
 ## [0.3.5.58] - 2026-08-13
 
 ### Fixed
