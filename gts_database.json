@@ -2393,32 +2393,32 @@
       "blackouts": 0,
       "pvpWins": 0,
       "flags": {
-        "EVENT_BEAT_SILPH_CO_6F_TRAINER_2": true,
-        "EVENT_SILPH_CO_6_UNLOCKED_DOOR": true,
-        "EVENT_BEAT_POKEMONTOWER_4_TRAINER_2": true,
         "EVENT_DAISY_WALKING": true,
-        "EVENT_BEAT_SILPH_CO_2F_TRAINER_0": true,
-        "EVENT_BEAT_SILPH_CO_2F_TRAINER_1": true,
-        "EVENT_BEAT_SILPH_CO_2F_TRAINER_2": true,
-        "EVENT_SILPH_CO_2_UNLOCKED_DOOR1": true,
-        "EVENT_GOT_TM36": true,
-        "EVENT_BEAT_SILPH_CO_3F_TRAINER_0": true,
-        "EVENT_BEAT_SILPH_CO_3F_TRAINER_1": true,
-        "EVENT_SILPH_CO_7_UNLOCKED_DOOR2": true,
-        "EVENT_GOT_POKEDEX": true,
         "EVENT_BEAT_SILPH_CO_4F_TRAINER_0": true,
         "EVENT_BEAT_SILPH_CO_4F_TRAINER_1": true,
-        "EVENT_SILPH_CO_4_UNLOCKED_DOOR2": true,
         "EVENT_SILPH_CO_4_UNLOCKED_DOOR1": true,
-        "EVENT_BEAT_SILPH_CO_9F_TRAINER_0": true,
+        "EVENT_BEAT_SILPH_CO_10F_TRAINER_1": true,
         "EVENT_BEAT_SILPH_CO_5F_TRAINER_0": true,
         "EVENT_BEAT_SILPH_CO_5F_TRAINER_1": true,
         "EVENT_BEAT_SILPH_CO_5F_TRAINER_2": true,
         "EVENT_BEAT_SILPH_CO_5F_TRAINER_3": true,
-        "EVENT_SILPH_CO_5_UNLOCKED_DOOR1": true,
+        "EVENT_BEAT_POKEMONTOWER_4_TRAINER_2": true,
         "EVENT_SILPH_CO_5_UNLOCKED_DOOR2": true,
-        "EVENT_BEAT_SILPH_CO_10F_TRAINER_1": true,
-        "EVENT_BEAT_SILPH_CO_6F_TRAINER_0": true
+        "EVENT_BEAT_SILPH_CO_6F_TRAINER_0": true,
+        "EVENT_BEAT_SILPH_CO_6F_TRAINER_2": true,
+        "EVENT_SILPH_CO_6_UNLOCKED_DOOR": true,
+        "EVENT_SILPH_CO_7_UNLOCKED_DOOR2": true,
+        "EVENT_SILPH_CO_5_UNLOCKED_DOOR1": true,
+        "EVENT_SILPH_CO_4_UNLOCKED_DOOR2": true,
+        "EVENT_BEAT_SILPH_CO_2F_TRAINER_0": true,
+        "EVENT_BEAT_SILPH_CO_2F_TRAINER_1": true,
+        "EVENT_BEAT_SILPH_CO_2F_TRAINER_2": true,
+        "EVENT_BEAT_SILPH_CO_3F_TRAINER_0": true,
+        "EVENT_SILPH_CO_2_UNLOCKED_DOOR1": true,
+        "EVENT_GOT_POKEDEX": true,
+        "EVENT_GOT_TM36": true,
+        "EVENT_BEAT_SILPH_CO_9F_TRAINER_0": true,
+        "EVENT_BEAT_SILPH_CO_3F_TRAINER_1": true
       },
       "completedFlags": [
         "EVENT_BEAT_POKEMONTOWER_4_TRAINER_2",
@@ -2456,15 +2456,15 @@
       "party": [
         {
           "level": 5,
+          "maxHp": 20,
           "hp": 20,
-          "species": "CYNDAQUIL",
-          "maxHp": 20
+          "species": "CYNDAQUIL"
         }
       ],
       "money": 3000,
       "coins": 0,
-      "map": "NEW_BARK_TOWN",
-      "timestamp": 1786660095
+      "map": "ELMS_LAB",
+      "timestamp": 1786666454
     },
     "449200": {
       "trainerId": "449200",
