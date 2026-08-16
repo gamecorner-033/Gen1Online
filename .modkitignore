@@ -1,0 +1,14 @@
+tests/blackjack_mod_test.lua
+tests/blackjack_rules_test.lua
+tests/holdem_rules_test.lua
+tests/pawn_test.lua
+tests/arcade_rules_test.lua
+# Server files live in server/gen1online (outside the mod) and must NEVER be
+# packed or zipped into a player-facing release.
+gts_server.py
+gts_admin.py
+Dockerfile
+gts_database.json
+players_backup.json
+private_ip_ledger.json
+server_secrets.json
