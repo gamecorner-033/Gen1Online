@@ -398,8 +398,8 @@
           while chunk do bodyStr = bodyStr .. tostring(chunk); chunk = reqTable.source() end
         end
         local path = reqTable.url:match("^https?://[^/]+(/?.*)") or "/gts"
-        local reqHeader = string.format("%s %s HTTP/1.1\r\nHost: 127.0.0.1:7779\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: %d\r\nX-Mod-Version: 0.3.6\r\n\r\n%s",
-          reqTable.method or "POST", path, #bodyStr, bodyStr)
+        local reqHeader = string.format("%s %s HTTP/1.1\r\nHost: 127.0.0.1:7779\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: %d\r\nX-Mod-Version: %s\r\n\r\n%s",
+          reqTable.method or "POST", path, #bodyStr, MOD_VERSION, bodyStr)
         pcall(tcp.send, tcp, reqHeader)
         local respData = {}
         while true do
@@ -427,7 +427,7 @@
     return false, nil, nil, nil, nil
   end
 
-  local MOD_VERSION = "0.3.6"
+  local MOD_VERSION = "0.3.6.1"
 
   -- Generation detection: "gen1" or "gen2"
   local currentGeneration = "gen1"
@@ -4819,6 +4819,18 @@ return function(mod)
 
   -- Wrap Game.update to continuously service active GtsNetAdapter during battle
   mod.hooks:wrap("core.update", function(nextFn, game, dt)
+    -- MMO speed lock: while connected, every player runs at 1x (NORMAL) game
+    -- speed so the online world stays in sync. Force it BEFORE the update so
+    -- the frame itself runs at 1x, and repeat every frame so the speed
+    -- hotkey / shoulder buttons / options menu cannot change it.
+    if isGtsServerConnected and game and game.options then
+      game.options.speed = 1
+      if game.options.speedOverworld ~= nil then game.options.speedOverworld = 1 end
+      if game.options.speedBattle ~= nil then game.options.speedBattle = 1 end
+      if game.options.speedMenu ~= nil then game.options.speedMenu = 1 end
+      game.speedOverride = nil
+    end
+
     if nextFn then nextFn(game, dt) end
 
     -- Continuous frame service for background jobs (sync, placement, and battle messages)

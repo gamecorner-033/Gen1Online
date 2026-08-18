@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.3.6.1] - 2026-08-17
+
+### Added
+
+- **Custom Gen 2 PVP battle engine** (`pvp/` modules): deterministic lockstep
+  battles on Gold using the native Gen 2 battle engine, with full-party
+  switching, shared RNG seed, canonical turn order, and the vanilla battle UI.
+  Swappable backend (`pvp.config.engine = "custom" | "native"`) for an easy
+  switch back when the recomp gains native PVP.
+- **Active server logout on quit** — new `logout` server action; the START-menu
+  QUIT item and quit-to-title both log the player out immediately (no 30s ghost).
+- **1x game-speed lock while online** — all players are forced to normal speed
+  and cannot alter it while connected, so the MMO stays synced.
+
+### Changed
+
+- Version bumped to 0.3.6.1 across manifest, mod.card, README, and server.
+- Remote-player movement over-prediction capped to one tile per packet (no more
+  walking off the map before snapping back).
+- PVP battle end now returns to the map (pops the battle state) instead of
+  freezing on the victory/defeat screen.
+- Battle-message transport is non-blocking via the async HTTP engine; the async
+  queue cap raised so battle messages are never dropped.
+
 ## [0.3.5.0] - 2026-08-11
 
 ### Added

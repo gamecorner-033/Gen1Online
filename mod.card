@@ -1,7 +1,7 @@
 [card]
 id = "gen1online-gamecorner"
 title = "Gen1Online Game Corner"
-version = "0.3.3"
+version = "0.3.6.1"
 author = "Antigravity & User"
 category = "CONTENT"
 tags = ["multiplayer", "coop", "online", "pvp", "casino", "holdem", "voxel"]
