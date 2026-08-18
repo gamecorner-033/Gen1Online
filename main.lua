@@ -65,9 +65,47 @@
   local hasLtn12, ltn12 = pcall(require, "ltn12")
   if not hasLtn12 then ltn12 = nil end
 
-  -- GTS Server URL: prioritize local server on port 7779 (0.1ms ping)
-  local GTS_SERVER_URL = "http://127.0.0.1:7779"
-  _G.GTS_SERVER_URL = GTS_SERVER_URL
+  -- GTS Server URL: read from gts_config.txt next to main.lua (per-device,
+  -- edit without rebuilding). Falls back to a storage value, then the default
+  -- local server on port 7779 (0.1ms ping).
+  local DEFAULT_SERVER_URL = "http://127.0.0.1:7779"
+  local GTS_SERVER_URL = DEFAULT_SERVER_URL
+  local function readServerUrlFromConfig()
+    local f = _G.love and _G.love.filesystem
+    if not (f and f.read) then return nil end
+    local candidates = {
+      "gts_config.txt",
+      "mods/gen1online-gamecorner/gts_config.txt",
+    }
+    for _, path in ipairs(candidates) do
+      local ok, content = pcall(f.read, path)
+      if ok and content and #content > 0 then
+        for line in tostring(content):gmatch("[^\r\n]+") do
+          local key, val = line:match("^%s*([^#=%s]+)%s*=%s*(.-)%s*$")
+          if key and val and key:lower() == "server_url" and #val > 0 then
+            return val
+          end
+        end
+      end
+    end
+    return nil
+  end
+  local function loadServerUrl()
+    local fromFile = readServerUrlFromConfig()
+    local stored = storageRead and storageRead("gts_server_url")
+    if fromFile then
+      GTS_SERVER_URL = fromFile
+    elseif stored and type(stored) == "string" and #stored > 0 then
+      GTS_SERVER_URL = stored
+    else
+      GTS_SERVER_URL = DEFAULT_SERVER_URL
+    end
+    _G.GTS_SERVER_URL = GTS_SERVER_URL
+    return GTS_SERVER_URL
+  end
+  local function getServerUrl()
+    return GTS_SERVER_URL
+  end
   local isGtsServerConnected = false -- Explicit manual connection required via menu
 
   -- Universal Overworld / World accessor for Gen 1 (overworld) and Gen 2 (world)
@@ -85,6 +123,7 @@
   local lastPlayerX = nil
   local lastPlayerY = nil
   local lastPlayerMap = nil
+  local lastPlayerMoving = false
   local activeBattleAdapter = nil
   local activeParty = nil
   local pendingPartyInvite = nil
@@ -101,6 +140,7 @@
   local netNpcs = {}       -- trainerId -> human NPC object
   local netFollowers = {}  -- trainerId -> follower NPC object
   local netPlayerMap = {}  -- trainerId -> player raw position data
+  local gtsSpriteDiagWritten = false  -- write remote-sprite diagnostic once
 
   -- Custom Trainer Profile State & MMO Leveling Engine (1 to 100)
   local localTrainerTitle = "ACE TRAINER"
@@ -195,10 +235,46 @@
   -- Remote NPC count logging timer
   local remoteCountLogTime = 0
 
+  -- Transport diagnostics: records the outcome of every request attempt so a
+  -- failing call can report exactly which transport died and why.
+  local netDiag = { url = "", method = "", timeout = 0, attempts = {} }
+  local function netDiagReset(url, method, timeout)
+    netDiag.url = url or ""
+    netDiag.method = method or ""
+    netDiag.timeout = timeout or 0
+    netDiag.attempts = {}
+  end
+  local function netDiagAdd(which, outcome)
+    netDiag.attempts[#netDiag.attempts + 1] = which .. ": " .. outcome
+  end
+  local function netDiagReport()
+    if #netDiag.attempts == 0 then return "NETWORK_ERROR" end
+    local lines = { "NETWORK_ERROR" }
+    local u = netDiag.url
+    if #u > 50 then u = u:sub(1, 47) .. "..." end
+    lines[#lines + 1] = "URL: " .. u
+    lines[#lines + 1] = string.format("REQ: %s TIMEOUT %gs", netDiag.method, netDiag.timeout)
+    for i = 1, math.min(#netDiag.attempts, 4) do
+      lines[#lines + 1] = netDiag.attempts[i]
+    end
+    return table.concat(lines, "\n")
+  end
+
   -- Universal Transport Helper (Supports direct HTTPS via LuaSec, socket.http, and pure luasocket TCP)
   local function makeHttpRequest(reqTable)
-    reqTable.timeout = reqTable.timeout or 4.0
+    reqTable.timeout = reqTable.timeout or 8.0
     local isHttps = (reqTable.url:sub(1, 5) == "https")
+    netDiagReset(reqTable.url, reqTable.method, reqTable.timeout)
+
+    -- If https requested but no SSL module present in the sandbox, rewrite to http so socket.http / pure socket TCP succeed
+    if isHttps then
+      local okHttps, httpsMod = pcall(require, "ssl.https")
+      local okSsl, ssl = pcall(require, "ssl")
+      if not (okHttps and httpsMod) and not (okSsl and ssl and ssl.wrap) then
+        reqTable.url = reqTable.url:gsub("^https://", "http://")
+        isHttps = false
+      end
+    end
 
     -- 1. Try ssl.https if https
     if isHttps then
@@ -206,8 +282,18 @@
       if okHttps and httpsMod then
         local ok, res, code, headers, status = pcall(httpsMod.request, reqTable)
         if ok and code and code >= 200 and code < 400 then
+          netDiagAdd("ssl.https", "OK code=" .. tostring(code))
           return ok, res, code, headers, status
         end
+        if not ok then
+          netDiagAdd("ssl.https", "THREW: " .. tostring(res))
+        elseif not code then
+          netDiagAdd("ssl.https", "FAIL: " .. tostring(status or res))
+        else
+          netDiagAdd("ssl.https", "code=" .. tostring(code))
+        end
+      else
+        netDiagAdd("ssl.https", "unavailable")
       end
     end
 
@@ -217,8 +303,18 @@
       local ok, res, code, headers, status = pcall(httpMod.request, reqTable)
       code = tonumber(code)
       if ok and code and code >= 200 and code < 400 then
+        netDiagAdd("socket.http", "OK code=" .. tostring(code))
         return ok, res, code, headers, status
       end
+      if not ok then
+        netDiagAdd("socket.http", "THREW: " .. tostring(res))
+      elseif not code then
+        netDiagAdd("socket.http", "FAIL: " .. tostring(status or res))
+      else
+        netDiagAdd("socket.http", "code=" .. tostring(code))
+      end
+    else
+      netDiagAdd("socket.http", "unavailable")
     end
 
     -- 3. Pure luasocket TCP client (Permitted by Sandbox with network permission)
@@ -229,59 +325,72 @@
         port = tonumber(port) or (isHttps and 443 or 80)
         if path == "" then path = "/" end
         local tcp = socket.tcp()
-        tcp:settimeout(reqTable.timeout or 3.0)
+        tcp:settimeout(reqTable.timeout or 8.0)
         local connOk, connErr = tcp:connect(host, port)
         if connOk then
+          local hsOk = true
           if isHttps then
             local okSsl, ssl = pcall(require, "ssl")
             if okSsl and ssl and ssl.wrap then
               local params = { mode = "client", protocol = "any", verify = "none" }
               tcp = ssl.wrap(tcp, params)
-              if tcp then pcall(tcp.dohandshake, tcp) end
+              if tcp then hsOk = pcall(tcp.dohandshake, tcp) end
             end
           end
-
-          local bodyStr = ""
-          if reqTable.source and type(reqTable.source) == "function" then
-            local chunk = reqTable.source()
-            while chunk do
-              bodyStr = bodyStr .. tostring(chunk)
-              chunk = reqTable.source()
+          if not hsOk then
+            netDiagAdd("raw-tcp", "TLS handshake failed")
+            pcall(tcp.close, tcp)
+          else
+            local bodyStr = ""
+            if reqTable.source and type(reqTable.source) == "function" then
+              local chunk = reqTable.source()
+              while chunk do
+                bodyStr = bodyStr .. tostring(chunk)
+                chunk = reqTable.source()
+              end
             end
-          end
 
-          local reqHeader = string.format("%s %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: %d\r\nX-Mod-Version: 0.3.6\r\n\r\n%s",
-            reqTable.method or (bodyStr ~= "" and "POST" or "GET"),
-            path, host, #bodyStr, bodyStr)
+            local reqHeader = string.format("%s %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: LuaSocket 2.0.2\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: %d\r\nX-Mod-Version: %s\r\n\r\n%s",
+              reqTable.method or (bodyStr ~= "" and "POST" or "GET"),
+              path, host, #bodyStr, MOD_VERSION, bodyStr)
 
-          pcall(tcp.send, tcp, reqHeader)
-          local respData = {}
-          while true do
-            local line, err, partial = tcp:receive(4096)
-            if line then table.insert(respData, line)
-            elseif partial and #partial > 0 then table.insert(respData, partial) end
-            if err then break end
-          end
-          pcall(tcp.close, tcp)
-
-          local fullResp = table.concat(respData)
-          local bodyStart = fullResp:find("\r\n\r\n") or fullResp:find("\n\n")
-          if bodyStart then
-            local realCode = tonumber(fullResp:match("^HTTP/%d%.%d%s+(%d+)")) or 200
-            local bodyOnly = fullResp:sub(bodyStart + 4)
-            if reqTable.sink and type(reqTable.sink) == "function" then
-              reqTable.sink(bodyOnly)
+            pcall(tcp.send, tcp, reqHeader)
+            local respData = {}
+            while true do
+              local line, err, partial = tcp:receive(4096)
+              if line then table.insert(respData, line)
+              elseif partial and #partial > 0 then table.insert(respData, partial) end
+              if err then break end
             end
-            return true, 1, realCode, {}, "OK"
+            pcall(tcp.close, tcp)
+
+            local fullResp = table.concat(respData)
+            local bodyStart = fullResp:find("\r\n\r\n") or fullResp:find("\n\n")
+            if bodyStart then
+              local realCode = tonumber(fullResp:match("^HTTP/%d%.%d%s+(%d+)")) or 200
+              local bodyOnly = fullResp:sub(bodyStart + 4)
+              if reqTable.sink and type(reqTable.sink) == "function" then
+                reqTable.sink(bodyOnly)
+              end
+              netDiagAdd("raw-tcp", "code=" .. tostring(realCode) .. " bytes=" .. tostring(#bodyOnly))
+              return true, 1, realCode, {}, "OK"
+            end
+            netDiagAdd("raw-tcp", "conn ok but no HTTP body")
           end
+        else
+          netDiagAdd("raw-tcp", "connect FAIL: " .. tostring(connErr))
         end
+      else
+        netDiagAdd("raw-tcp", "bad URL")
       end
+    else
+      netDiagAdd("raw-tcp", "socket unavailable")
     end
 
     -- 4. Fallback to local server http://127.0.0.1:7779 if remote failed
     if isHttps and okSocket and socket and socket.tcp then
       local tcp = socket.tcp()
-      tcp:settimeout(reqTable.timeout or 2.0)
+      tcp:settimeout(reqTable.timeout or 8.0)
       if tcp:connect("127.0.0.1", 7779) then
         local bodyStr = ""
         if reqTable.source and type(reqTable.source) == "function" then
@@ -307,8 +416,11 @@
           if reqTable.sink and type(reqTable.sink) == "function" then
             reqTable.sink(bodyOnly)
           end
+          netDiagAdd("localhost", "code=200")
           return true, 1, 200, {}, "OK"
         end
+      else
+        netDiagAdd("localhost", "connect FAIL")
       end
     end
 
@@ -371,7 +483,7 @@
     local separator = path:find("?") and "&" or "?"
     local fullPath = path .. separator .. "version=" .. MOD_VERSION .. "&modVersion=" .. MOD_VERSION
     local ok, res, code, headers, status = makeHttpRequest({
-      url = GTS_SERVER_URL .. fullPath,
+      url = getServerUrl() .. fullPath,
       method = "GET",
       headers = {
         ["X-Mod-Version"] = MOD_VERSION
@@ -385,6 +497,9 @@
       local str = table.concat(response_body)
       local okJson, data = pcall(Json.decode, str)
       if okJson and data then return data end
+      netDiagAdd("decode", "response not JSON (code=" .. tostring(code) .. ")")
+    elseif not ok then
+      netDiagAdd("http", "request failed (code=" .. tostring(code) .. ")")
     end
     return nil
   end
@@ -400,7 +515,7 @@
     local response_body = {}
     local sent = false
     local ok, res, code, headers, status = makeHttpRequest({
-      url = GTS_SERVER_URL .. "/gts",
+      url = getServerUrl() .. "/gts",
       method = "POST",
       headers = {
         ["Content-Type"] = "application/json",
@@ -420,6 +535,9 @@
       local str = table.concat(response_body)
       local okJson, data = pcall(Json.decode, str)
       if okJson and data then return data end
+      netDiagAdd("decode", "response not JSON (code=" .. tostring(code) .. ")")
+    elseif not ok then
+      netDiagAdd("http", "request failed (code=" .. tostring(code) .. ")")
     end
     return nil
   end  -- Text Auto-Wrapping & 2-Line Dialogue Page Break Formatter
@@ -457,7 +575,7 @@
     return table.concat(pages, "\f")
   end
 
-  -- Helper to list all Gen 1 Pokémon species sorted alphabetically
+  -- Helper to list all Gen 1 PokÃ©mon species sorted alphabetically
   local function getAllGen1Species(data)
     local speciesList = {}
     if data and data.pokemon then
@@ -590,6 +708,7 @@
   local openFreshOnlinePlayerMenu = nil
   local openRedeemTokenMenu = nil
   local openMyProfileMenu = nil
+  local openServerUrlMenu = nil
   local openTrainerCardScreen = nil
   local openMmoLevelInfoScreen = nil
   local openMmoChatMenu = nil
@@ -597,21 +716,470 @@
   local handleConnectToServer = nil
   local applyPlayerSprite = nil
 
-  -- NOTE: Battle responses are drained by GtsNetAdapter:update() directly, not here.
-  --       This function only handles position-sync and challenge/trade signals.
-  local lastNetworkPollTime = 0
-  local function processGlobalThreadMessages(game)
+  -- ==========================================================================
+  -- Non-blocking persistent HTTP/1.1 client for high-frequency sync traffic.
+  -- The game loop never blocks on a network round-trip, and a single TLS
+  -- connection is kept alive so we avoid re-doing the (expensive) handshake
+  -- for every position sync. Requests are handled one at a time for simple,
+  -- reliable response framing.
+  -- ==========================================================================
+  local asyncState = "idle"        -- idle | connect | handshake | send | recv
+  local asyncSock = nil            -- tcp (or ssl-wrapped) socket
+  local asyncHost = nil
+  local asyncPort = nil
+  local asyncIsHttps = false
+  local asyncWrite = ""            -- request bytes still to send
+  local asyncRead = ""             -- raw response bytes accumulated
+  local asyncBody = ""             -- current response body
+  local asyncBodyLen = -1          -- expected body length (Content-Length)
+  local asyncInHeaders = true      -- still parsing response headers
+  local asyncPending = {}          -- queue of { url=.., body=.., resp={} }
+  local asyncActive = nil          -- request currently being serviced
+  local asyncConnectTried = false
+  local asyncConnectStart = 0      -- time the current connect attempt began
+  local asyncReconnectUntil = 0    -- absolute time after which we retry
+  local asyncStallStart = 0        -- time we last made progress (send/recv)
+  local asyncSendTimeout = 0       -- armed send stall deadline (unused for now)
+
+  local function asyncParseUrl(url)
+    local scheme, host, port = url:match("^(https?)://([^/:]+):?(%d*)")
+    if not scheme then return nil end
+    port = tonumber(port) or (scheme == "https" and 443 or 80)
+    local path = url:match("^https?://[^/]+(/[^?#]*)") or "/"
+    return scheme, host, port, path
+  end
+
+  local function asyncClose(reason)
+    if asyncSock then
+      pcall(function() asyncSock:close() end)
+    end
+    asyncSock = nil
+    asyncState = "idle"
+    asyncConnectTried = false
+    asyncConnectStart = 0
+    asyncStallStart = 0
+    asyncWrite = ""
+    asyncRead = ""
+    asyncBody = ""
+    asyncBodyLen = -1
+    asyncInHeaders = true
+    asyncActive = nil
+    -- If there's still pending work and we just failed, retry shortly.
+    if #asyncPending > 0 then
+      asyncReconnectUntil = (_G.love and _G.love.timer and _G.love.timer.getTime) and _G.love.timer.getTime() or os.time()
+      asyncReconnectUntil = asyncReconnectUntil + 0.5
+    end
+    if reason then netDiagAdd("async", "closed: " .. tostring(reason)) end
+  end
+
+  local function asyncEnsureHost()
+    if not asyncHost or not asyncPort then
+      local first = asyncPending[1]
+      if first then
+        local scheme, host, port = asyncParseUrl(first.url)
+        local okSsl, ssl = pcall(require, "ssl")
+        if (scheme == "https") and not (okSsl and ssl and ssl.wrap) then
+          -- In Love2D runtime without LuaSec SSL: adapt to port 80 HTTP for Cloudflare tunnel/local server
+          asyncHost = host
+          asyncPort = 80
+          asyncIsHttps = false
+        else
+          asyncHost = host
+          asyncPort = port
+          asyncIsHttps = (scheme == "https")
+        end
+      end
+    end
+    return asyncHost ~= nil
+  end
+
+
+
+  -- Blocking TLS handshake (runs once per connection, not per request). This is
+  -- the exact path makeHttpRequest uses, which provably connects in-game. A
+  -- non-blocking handshake (settimeout(0) + dohandshake polling) was tried and
+  -- stalls before completing in this runtime, so we keep the reliable blocking
+  -- handshake and switch the socket to non-blocking only AFTER it completes.
+  local function asyncDoHandshake(tcp)
+    local okSsl, ssl = pcall(require, "ssl")
+    if not (okSsl and ssl and ssl.wrap) then return nil, "no ssl" end
+    local wrapped = ssl.wrap(tcp, { mode = "client", protocol = "any", verify = "none" })
+    if not wrapped then return nil, "ssl wrap failed" end
+    wrapped:settimeout(8.0)
+    local okHs, hsErr = wrapped:dohandshake()
+    if not okHs then return nil, "tls handshake failed: " .. tostring(hsErr) end
+    wrapped:settimeout(0)
+    return wrapped, nil
+  end
+
+  -- NON-BLOCKING connect (settimeout 0 + getpeername polling), then a BLOCKING
+  -- TLS handshake once the TCP socket is live. After that the socket runs in
+  -- non-blocking mode so per-sync send/recv never block the game loop.
+  local function asyncStartConnect()
+    if not asyncEnsureHost() then asyncClose("bad url"); return end
+    -- Diagnostic: a connect during a battle means the persistent connection
+    -- dropped, and the blocking handshake below would freeze the PVP lockstep.
+    if inBattle then
+      pcall(function()
+        local f = _G.love and _G.love.filesystem
+        if f and f.write then
+          f.write("gts_pvp_diag.txt", "async reconnect during battle\n")
+        end
+      end)
+    end
+    local okS, socket = pcall(require, "socket")
+    if not (okS and socket and socket.tcp) then
+      asyncClose("no luasocket"); return
+    end
+    local tcp = socket.tcp()
+    tcp:settimeout(0)
+    local cok = tcp:connect(asyncHost, asyncPort)
     local now = (_G.love and _G.love.timer and _G.love.timer.getTime) and _G.love.timer.getTime() or os.time()
-    if now - lastNetworkPollTime < 0.20 then
+    asyncConnectStart = now
+    if cok then
+      -- Immediate connection: wrap TLS (blocking handshake) then go to send.
+      if asyncIsHttps then
+        local wrapped, werr = asyncDoHandshake(tcp)
+        if not wrapped then asyncClose(werr); return end
+        asyncSock = wrapped
+      else
+        asyncSock = tcp
+      end
+      asyncConnectTried = false
+      asyncState = "send"
+    else
+      -- Non-blocking connect: poll getpeername in asyncPoll.
+      asyncSock = tcp
+      asyncConnectTried = true
+      asyncState = "connect"
+    end
+  end
+
+  local asyncLastSuccess = 0       -- time of last successful response delivery
+  local asyncLastTry = 0           -- time we last let the async engine attempt
+  local asyncLastError = ""        -- most recent async failure reason
+  local lastFallbackTime = 0       -- throttle for the synchronous fallback
+  local asyncDiagTime = 0          -- throttle for the async diagnostic file
+
+  local function asyncReset(reason)
+    asyncLastError = tostring(reason or "")
+    asyncClose(reason)
+    asyncPending = {}
+    asyncActive = nil
+  end
+
+  -- Non-blocking socket operations (especially LuaSec TLS with settimeout(0))
+  -- return these when there is nothing to do *yet*: the caller should retry on
+  -- the next poll, NOT treat it as a connection failure. "closed" and real
+  -- errors (refused/reset) are handled separately by the caller.
+  local function asyncWouldBlock(err)
+    return err == "timeout" or err == "wantread" or err == "wantwrite"
+      or err == "wantconnect" or err == "wantaccept" or err == "wantshutdown"
+      or err == "wantclientcert" or err == "again" or err == "busy"
+  end
+
+  -- Deliver a completed async request: callbacks (battle messages, etc.) get
+  -- the decoded body; everything else goes to netInChannel for the normal
+  -- sync/challenge drain.
+  local function asyncDeliver(req)
+    if not req then return false end
+    local body = req.resp and table.concat(req.resp)
+    if not body or #body == 0 then return false end
+    if type(req.callback) == "function" then
+      local ok, dec = pcall(Json.decode, body)
+      pcall(req.callback, ok and dec or nil, body)
+    elseif netInChannel then
+      netInChannel:push(body)
+    end
+    return true
+  end
+
+  local function asyncPollInner()
+    local now = (_G.love and _G.love.timer and _G.love.timer.getTime) and _G.love.timer.getTime() or os.time()
+    -- Keep servicing while there is pending work OR an in-flight request whose
+    -- response is still being read. Only go fully idle when both are empty.
+    if #asyncPending == 0 and asyncActive == nil and asyncState == "idle" then
       return
     end
-    lastNetworkPollTime = now
+    if asyncState == "idle" then
+      if asyncSock then
+        -- Reuse the open keep-alive connection for the next request (the whole
+        -- point of keep-alive: no fresh connect / TLS handshake per sync).
+        asyncState = "send"
+      elseif now < asyncReconnectUntil then
+        return
+      else
+        asyncStartConnect()
+      end
+      return
+    elseif asyncState == "connect" then
+      if not asyncSock then asyncClose("no sock"); return end
+      -- Poll for non-blocking connect completion. Generous timeout: a first
+      -- TLS connect through the Cloudflare tunnel can take a few seconds.
+      if now - asyncConnectStart > 15.0 then
+        asyncClose("connect timed out")
+        return
+      end
+      local peer = asyncSock:getpeername()
+      if peer then
+        if asyncIsHttps then
+          local wrapped, werr = asyncDoHandshake(asyncSock)
+          if not wrapped then asyncClose(werr); return end
+          asyncSock = wrapped
+        end
+        asyncConnectTried = false
+        asyncState = "send"
+      else
+        local _, err = asyncSock:getpeername()
+        if err and err ~= "timeout" and not asyncWouldBlock(err) then
+          asyncClose("connect failed: " .. tostring(err))
+          return
+        end
+        return
+      end
+    end
 
-    -- Drain the outgoing queue (all pending, capped) so position syncs stay
-    -- current even while the player is moving. Each request is fast on localhost.
+    if asyncState == "send" then
+      if not asyncSock then asyncClose("no sock"); return end
+      if asyncWrite == "" then
+        -- Pull the next pending request and build its request bytes.
+        if not asyncActive then
+          asyncActive = table.remove(asyncPending, 1)
+        end
+        if not asyncActive then asyncState = "idle"; return end
+        local scheme, host, port, path = asyncParseUrl(asyncActive.url)
+        local bodyStr = asyncActive.body or ""
+        local reqHead = string.format(
+          "POST %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: LuaSocket 2.0.2\r\nConnection: keep-alive\r\nContent-Type: application/json\r\nContent-Length: %d\r\nX-Mod-Version: %s\r\n\r\n%s",
+          path or "/gts", host, #bodyStr, MOD_VERSION, bodyStr)
+        asyncWrite = reqHead
+        asyncRead = ""
+        asyncBody = ""
+        asyncBodyLen = -1
+        asyncInHeaders = true
+        asyncStallStart = now
+      end
+      local sent, err, partial = asyncSock:send(asyncWrite)
+      if sent and sent > 0 then
+        asyncWrite = asyncWrite:sub(sent + 1)
+        asyncStallStart = now
+      elseif partial and partial > 0 then
+        asyncWrite = asyncWrite:sub(partial + 1)
+        asyncStallStart = now
+      end
+      if err and not asyncWouldBlock(err) then
+        asyncClose("send failed: " .. tostring(err))
+        return
+      end
+      if asyncStallStart > 0 and now - asyncStallStart > 12.0 then
+        -- The reused keep-alive connection is dead (tunnel/server closed it
+        -- while idle). Drop it; the next poll reconnects fresh.
+        asyncClose("send stalled")
+        return
+      end
+      if asyncWrite == "" then
+        asyncState = "recv"
+        asyncStallStart = now
+      end
+      return
+    end
+
+    if asyncState == "recv" then
+      if not asyncSock then asyncClose("no sock"); return end
+      local chunk, err, partial = asyncSock:receive(4096)
+      local gotBytes = false
+      if chunk then
+        asyncStallStart = now
+        asyncRead = asyncRead .. chunk
+        gotBytes = true
+      elseif partial and #partial > 0 then
+        -- Non-blocking TLS often returns partial bytes along with "wantread";
+        -- consume them so we make progress instead of stalling forever.
+        asyncStallStart = now
+        asyncRead = asyncRead .. partial
+        gotBytes = true
+      end
+
+      if gotBytes then
+        -- Shared parsing (works for a full chunk OR partial reads): headers
+        -- first, then Content-Length-framed body. Repeated here for both
+        -- cases would drift, so both feed this one block.
+        while asyncInHeaders do
+          local hdrEnd = asyncRead:find("\r\n\r\n")
+          if not hdrEnd then break end
+          local headerBlock = asyncRead:sub(1, hdrEnd - 1)
+          asyncRead = asyncRead:sub(hdrEnd + 4)
+          for line in (headerBlock .. "\n"):gmatch("([^\r\n]+)") do
+            local k, v = line:match("^([^:]+):%s*(.-)%s*$")
+            if k and k:lower() == "content-length" then
+              asyncBodyLen = tonumber(v) or -1
+            end
+          end
+          asyncInHeaders = false
+        end
+        if not asyncInHeaders then
+          if asyncBodyLen >= 0 then
+            asyncBody = asyncBody .. asyncRead
+            asyncRead = ""
+            if #asyncBody >= asyncBodyLen then
+              local full = asyncBody:sub(1, asyncBodyLen)
+              if asyncActive and asyncActive.resp then
+                asyncActive.resp[#asyncActive.resp + 1] = full
+              end
+              -- Response complete: deliver and move to next request.
+              if asyncActive then
+                local req = asyncActive
+                if asyncDeliver(req) then asyncLastSuccess = now end
+                asyncActive = nil
+                asyncState = "send"
+              end
+            end
+          else
+            -- No Content-Length: treat as complete on read.
+            if asyncActive and asyncActive.resp and #asyncRead > 0 then
+              asyncActive.resp[#asyncActive.resp + 1] = asyncRead
+            end
+            asyncRead = ""
+            if asyncActive then
+              local req = asyncActive
+              if asyncDeliver(req) then asyncLastSuccess = now end
+              asyncActive = nil
+              asyncState = "send"
+            end
+          end
+        end
+      elseif err then
+        if err == "closed" then
+          -- Server closed the connection (shouldn't with keep-alive, but handle).
+          if asyncRead ~= "" or asyncBody ~= "" then
+            if asyncActive and asyncActive.resp then
+              if asyncBody ~= "" then asyncActive.resp[#asyncActive.resp + 1] = asyncBody end
+              if asyncRead ~= "" then asyncActive.resp[#asyncActive.resp + 1] = asyncRead end
+            end
+            if asyncActive then asyncDeliver(asyncActive) end
+            asyncActive = nil
+          end
+          asyncClose("server closed connection")
+        elseif not asyncWouldBlock(err) then
+          asyncClose("recv failed: " .. tostring(err))
+        else
+          -- Would block (timeout / wantread / etc.): retry on the next poll.
+          -- If we've been waiting too long on a reused keep-alive connection,
+          -- it's dead. Drop it and reconnect.
+          if asyncStallStart > 0 and now - asyncStallStart > 12.0 then
+            asyncClose("recv stalled")
+          end
+        end
+      end
+      return
+    end
+  end
+
+  -- Crash-proof wrapper: a Lua error inside the async state machine must never
+  -- take down the game loop. Reset to a clean state and keep retrying.
+  local function asyncPoll()
+    local ok, err = pcall(asyncPollInner)
+    if not ok then
+      asyncReset("async engine error: " .. tostring(err))
+    end
+  end
+
+  -- Non-blocking battle-message send (PVP rooms): enqueues a POST to /gts via
+  -- the async engine and invokes callback(decodedResponse) when it completes.
+  local function pvpBattleSend(payload, callback)
+    if not payload then return end
+    payload.modVersion = MOD_VERSION
+    payload.version = MOD_VERSION
+    local gName, rVer = getClientVersionInfo()
+    payload.gameVersion = gName
+    payload.recompVersion = rVer
+    asyncPending[#asyncPending + 1] = {
+      url = getServerUrl() .. "/gts",
+      body = Json.encode(payload),
+      resp = {},
+      callback = callback,
+    }
+    while #asyncPending > 30 do table.remove(asyncPending, 1) end
+  end
+
+  -- Generation-aware party pack for the wire: Gen 2 uses packMon2 so both
+  -- peers rebuild identical copies with unpackMon2; Gen 1 keeps the vanilla
+  -- packParty path.
+  local function packPartyForGame(game, party)
+    if isGen2 then
+      local okP, PvpEngine = pcall(require, "mods.gen1online-gamecorner.pvp.engine")
+      if okP and PvpEngine and PvpEngine.packParty then
+        return PvpEngine.packParty(party)
+      end
+    end
+    return Protocol.packParty(party)
+  end
+
+  -- =========================================================================
+  -- ASYNCHRONOUS JOB SYSTEM (Replacement for Lua Threading)
+  -- Coordinates non-blocking network polling and overworld remote player placement
+  -- while keeping host player movement and menu navigation 100% local.
+  -- =========================================================================
+  local Jobs = {
+    registry = {},
+    nextId = 1
+  }
+
+  function Jobs.submit(name, stepFn, cancelFn, persist)
+    local id = Jobs.nextId
+    Jobs.nextId = Jobs.nextId + 1
+    local job = {
+      id = id,
+      name = name or "task",
+      status = "running",
+      step = stepFn,
+      cancel = cancelFn,
+      persist = (persist ~= false),
+      createdAt = (_G.love and _G.love.timer and _G.love.timer.getTime) and _G.love.timer.getTime() or os.time()
+    }
+    Jobs.registry[id] = job
+    return id
+  end
+
+  function Jobs.poll(id)
+    return Jobs.registry[id] or { status = "error", err = "unknown job" }
+  end
+
+  function Jobs.cancel(id)
+    local job = Jobs.registry[id]
+    if job and job.status == "running" then
+      job.status = "cancelled"
+      if job.cancel then pcall(job.cancel, job) end
+    end
+  end
+
+  function Jobs.step(game, dt)
+    dt = dt or (1 / 60)
+    for id, job in pairs(Jobs.registry) do
+      if job.status == "running" and job.step then
+        local ok, res = pcall(job.step, job, game, dt)
+        if not ok then
+          job.status = "error"
+          job.err = tostring(res)
+        elseif res == "done" then
+          job.status = "done"
+        end
+      end
+      if (job.status == "done" or job.status == "cancelled" or job.status == "error") and not job.persist then
+        Jobs.registry[id] = nil
+      end
+    end
+  end
+
+  -- NOTE: Battle responses are drained by GtsNetAdapter:update() directly, not here.
+  --       This function only handles position-sync and challenge/trade signals.
+  local function processGlobalThreadMessages(game)
+    local now = (_G.love and _G.love.timer and _G.love.timer.getTime) and _G.love.timer.getTime() or os.time()
+
+    -- Feed the non-blocking persistent HTTP client (coalescing sync_pos to avoid bufferbloat)
+    -- so position syncs stay real-time without building a multi-second backlog over the tunnel.
     if netOutChannel then
-      local drained = 0
-      while drained < 8 do
+      while true do
         local req = netOutChannel:pop()
         if not (req and req.url) then break end
         if req.body then
@@ -623,30 +1191,101 @@
             decoded.gameVersion = gName
             decoded.recompVersion = rVer
             req.body = Json.encode(decoded)
+
+            if decoded.action == "sync_pos" then
+              -- Coalesce: if a sync_pos is already waiting in asyncPending, update it with
+              -- the latest position in place rather than stacking up behind older requests!
+              local replaced = false
+              for i = #asyncPending, 1, -1 do
+                local pReq = asyncPending[i]
+                if pReq and pReq.body and pReq.body:find('"action"%s*:%s*"sync_pos"') then
+                  req.resp = {}
+                  asyncPending[i] = req
+                  replaced = true
+                  break
+                end
+              end
+              if not replaced then
+                req.resp = {}
+                asyncPending[#asyncPending + 1] = req
+              end
+            else
+              req.resp = {}
+              asyncPending[#asyncPending + 1] = req
+            end
+          else
+            req.resp = {}
+            asyncPending[#asyncPending + 1] = req
+          end
+        else
+          req.resp = {}
+          asyncPending[#asyncPending + 1] = req
+        end
+      end
+      -- Cap the queue generously: PVP battle messages share this queue, and
+      -- dropping them would deadlock the lockstep battle exchange.
+      while #asyncPending > 30 do
+        table.remove(asyncPending, 1)
+      end
+    end
+
+    -- Advance the non-blocking engine here AND every frame in core.update.
+    -- Local-first: this path never blocks the game loop. Safety net: if the
+    -- engine has not delivered a response in ~8s it is not reaching the server,
+    -- so send ONE sync synchronously (throttled to every 8s) to keep the player
+    -- on the server and refresh remote players. This only fires while the
+    -- smooth path is failing, and a brief block every 8s beats losing
+    -- visibility. The engine is NOT reset, so it keeps trying and seamlessly
+    -- takes back over the moment it delivers.
+    if #asyncPending > 0 then
+      asyncPoll()
+      -- The synchronous fallback must never fire mid-battle: it blocks the
+      -- main thread (fresh connection + handshake) which would freeze the PVP
+      -- lockstep. During a battle the async path is the only transport.
+      if not inBattle and (now - asyncLastSuccess) > 8.0 and (now - lastFallbackTime) >= 8.0 then
+        lastFallbackTime = now
+        local req = table.remove(asyncPending, 1)
+        if req then
+          local resp = {}
+          local sent = false
+          local ok = makeHttpRequest({
+            url = req.url,
+            method = "POST",
+            timeout = 8.0,
+            headers = {
+              ["Content-Type"] = "application/json",
+              ["Content-Length"] = tostring(#(req.body or "")),
+              ["X-Mod-Version"] = MOD_VERSION
+            },
+            source = function()
+              if not sent then sent = true; return req.body end
+              return nil
+            end,
+            sink = function(chunk) if chunk then table.insert(resp, chunk) end end
+          })
+          if ok and #resp > 0 and netInChannel then
+            netInChannel:push(table.concat(resp))
           end
         end
-        local resp = {}
-        local bodyStr = req.body or ""
-        local sent = false
-        local ok, res, code = makeHttpRequest({
-          url = req.url,
-          method = "POST",
-          timeout = 1.0,
-          headers = {
-            ["Content-Type"] = "application/json",
-            ["Content-Length"] = tostring(#bodyStr),
-            ["X-Mod-Version"] = MOD_VERSION
-          },
-          source = function()
-            if not sent then sent = true; return bodyStr end
-            return nil
-          end,
-          sink = function(chunk) if chunk then table.insert(resp, chunk) end end
-        })
-        if ok and #resp > 0 and netInChannel then
-          netInChannel:push(table.concat(resp))
-        end
-        drained = drained + 1
+      end
+    end
+
+    -- Diagnostic: while the async engine is failing, write its state to a file
+    -- every ~5s so the exact failure point can be reported.
+    if asyncDiagTime == 0 or now - asyncDiagTime >= 5.0 then
+      asyncDiagTime = now
+      if (now - asyncLastSuccess) > 5.0 and asyncLastError ~= "" then
+        pcall(function()
+          local f = _G.love and _G.love.filesystem
+          if f and f.write then
+            f.write("gts_async_diag.txt", string.format(
+              "state=%s lastError=%s lastSuccessAge=%ds pending=%d active=%s sock=%s\n",
+              tostring(asyncState), tostring(asyncLastError),
+              math.floor(now - asyncLastSuccess), #asyncPending,
+              asyncActive and "yes" or "no",
+              asyncSock and "yes" or "no"))
+          end
+        end)
       end
     end
     -- Drain ALL queued position-sync responses (drain-all prevents stale challenge
@@ -762,9 +1401,9 @@
                   gtsApiPost({ action = "clear_challenge", trainerId = myId }, 0.5)
 
                   if not game.save or not game.save.party or #game.save.party == 0 then
-                    game.stack:push(TextBox.new(game, wrapText("YOU NEED AT LEAST 1 POKéMON IN YOUR PARTY TO BATTLE!")))
+                    game.stack:push(TextBox.new(game, wrapText("YOU NEED AT LEAST 1 POKÃ©MON IN YOUR PARTY TO BATTLE!")))
                   elseif not remotePartyPacked or #remotePartyPacked == 0 then
-                    game.stack:push(TextBox.new(game, wrapText(string.format("%s HAS NO POKéMON IN THEIR PARTY!", challengerName or "FOE"))))
+                    game.stack:push(TextBox.new(game, wrapText(string.format("%s HAS NO POKÃ©MON IN THEIR PARTY!", challengerName or "FOE"))))
                   else
                     game.stack:push(TextBox.new(game, "CHALLENGE ACCEPTED!\nSTARTING PVP BATTLE!"))
                     startPvpBattle(game, challengerName, challengerId, remotePartyPacked, true, sharedSeed, roomId)
@@ -775,7 +1414,7 @@
                 local myId = getTrainerInfo(game.save)
                 gtsApiPost({ action = "clear_challenge", trainerId = myId }, 0.5)
                 if not game.save or not game.save.party or #game.save.party == 0 then
-                  game.stack:push(TextBox.new(game, wrapText("YOU NEED AT LEAST 1 POKéMON IN YOUR PARTY TO TRADE!")))
+                  game.stack:push(TextBox.new(game, wrapText("YOU NEED AT LEAST 1 POKÃ©MON IN YOUR PARTY TO TRADE!")))
                 else
                   game.stack:push(TextBox.new(game, wrapText("OFFER ACCEPTED! STARTING LINK TRADE!")))
                   startLinkTrade(game, challengerName, challengerId, false, roomId)
@@ -792,14 +1431,14 @@
                     label = string.format("ACCEPT %s", cType),
                     onSelect = function()
                       gtsApiPost({ action = "clear_challenge", trainerId = myId }, 0.5)
-                      local myPackedParty = Protocol.packParty(game.save and game.save.party or {})
+                      local myPackedParty = packPartyForGame(game, game.save and game.save.party or {})
                       if cType == "PVP" then
                         if not game.save or not game.save.party or #game.save.party == 0 then
-                          game.stack:push(TextBox.new(game, wrapText("YOU NEED AT LEAST 1 POKéMON IN YOUR PARTY TO BATTLE!")))
+                          game.stack:push(TextBox.new(game, wrapText("YOU NEED AT LEAST 1 POKÃ©MON IN YOUR PARTY TO BATTLE!")))
                           return
                         end
                         if not remotePartyPacked or #remotePartyPacked == 0 then
-                          game.stack:push(TextBox.new(game, wrapText(string.format("%s HAS NO POKéMON IN THEIR PARTY!", challengerName or "FOE"))))
+                          game.stack:push(TextBox.new(game, wrapText(string.format("%s HAS NO POKÃ©MON IN THEIR PARTY!", challengerName or "FOE"))))
                           return
                         end
                         gtsApiPost({
@@ -815,7 +1454,7 @@
                         startPvpBattle(game, challengerName, challengerId, remotePartyPacked, false, sharedSeed, roomId)
                       elseif cType == "TRADE" then
                         if not game.save or not game.save.party or #game.save.party == 0 then
-                          game.stack:push(TextBox.new(game, wrapText("YOU NEED AT LEAST 1 POKéMON IN YOUR PARTY TO TRADE!")))
+                          game.stack:push(TextBox.new(game, wrapText("YOU NEED AT LEAST 1 POKÃ©MON IN YOUR PARTY TO TRADE!")))
                           return
                         end
                         gtsApiPost({
@@ -929,7 +1568,7 @@
     return count
   end
 
-  -- Calculate Total Pokédex Caught from Save
+  -- Calculate Total PokÃ©dex Caught from Save
   local function getPokedexCount(save)
     if not save or not save.pokedex or not save.pokedex.owned then return 0 end
     local count = 0
@@ -990,6 +1629,8 @@
       pcall(currentMod.storage.delete, currentMod.storage, key)
     end
   end
+
+  loadServerUrl()
 
   loadOnlineSave = function(game)
     local save = storageRead("online_save")
@@ -1179,18 +1820,103 @@
     if inBattle then return end  -- Double-start guard
     if not game or not game.save or not game.save.party or #game.save.party == 0 then
       inBattle = false
-      game.stack:push(TextBox.new(game, wrapText("YOU NEED AT LEAST 1 POKéMON IN YOUR PARTY TO BATTLE!")))
+      game.stack:push(TextBox.new(game, wrapText("YOU NEED AT LEAST 1 POKÃ©MON IN YOUR PARTY TO BATTLE!")))
       return
     end
     if not remotePartyPacked or #remotePartyPacked == 0 then
       inBattle = false
-      game.stack:push(TextBox.new(game, wrapText(string.format("%s HAS NO POKéMON IN THEIR PARTY!", opponentName or "FOE"))))
+      game.stack:push(TextBox.new(game, wrapText(string.format("%s HAS NO POKÃ©MON IN THEIR PARTY!", opponentName or "FOE"))))
+      return
+    end
+
+    if isGen2 then
+      -- Custom Gen 2 PVP engine (pvp/*): both machines run the same
+      -- deterministic battle with a shared seed; actions exchange over the
+      -- async battle transport. Swap-friendly: when the recomp gains native
+      -- PVP, replace this backend (pvp.config.engine = "native").
+      local okPvp, PvpEngine = pcall(require, "mods.gen1online-gamecorner.pvp.engine")
+      local okSess, PvpSession = pcall(require, "mods.gen1online-gamecorner.pvp.session")
+      local okNet, PvpNet = pcall(require, "mods.gen1online-gamecorner.pvp.net")
+      local okUi, PvpUi = pcall(require, "mods.gen1online-gamecorner.pvp.ui")
+      if not (okPvp and okSess and okNet and okUi) then
+        inBattle = false
+        game.stack:push(TextBox.new(game, wrapText("PVP MODULE FAILED TO LOAD.")))
+        return
+      end
+
+      inBattle = true
+      local trainerId, myName = getTrainerInfo(game.save)
+      local myParty = PvpEngine.clampParty(game.data, packPartyForGame(game, game.save.party))
+      local theirParty = PvpEngine.clampParty(game.data, remotePartyPacked)
+      if #myParty == 0 or #theirParty == 0 then
+        inBattle = false
+        game.stack:push(TextBox.new(game, wrapText("BOTH TRAINERS NEED POKÃ©MON TO BATTLE!")))
+        return
+      end
+
+      local role = isHostPlayer and "host" or "guest"
+      local net = PvpNet.new({
+        send = pvpBattleSend,
+        myId = trainerId,
+        theirId = opponentId,
+        roomId = roomId,
+      })
+      local session = PvpSession.new({ net = net, role = role })
+      local battle = PvpEngine.new({
+        gameData = game.data,
+        save = game.save,
+        myParty = myParty,
+        theirParty = theirParty,
+        myName = myName,
+        theirName = opponentName or "FOE",
+        theirSpriteId = nil, -- localSelectedSprite/their sprite resolved by the UI
+        seed = seed or 12345,
+        role = role,
+      })
+
+      local ui = PvpUi.new(game, {
+        battle = battle,
+        save = game.save,
+        session = session,
+        onDone = function()
+          -- Return to the map immediately: never leave the battle screen up
+          -- (the vanilla Gen 2 onDone pops the battle state, World.lua:5879).
+          if game and game.stack then
+            pcall(function() game.stack:pop() end)
+          end
+          pcall(function()
+            local Music = require("src.core.Music")
+            if Music and Music.restoreMap then Music.restoreMap(game.data) end
+          end)
+          inBattle = false
+          activeBattleAdapter = nil
+          pcall(function() session:close() end)
+          if netInChannel then while netInChannel:pop() do end end
+          local myId = getTrainerInfo(game.save)
+          isWaitingForChallenge = false
+          lastBattleEndTime = (_G.love and _G.love.timer and _G.love.timer.getTime)
+                                and _G.love.timer.getTime() or os.time()
+          -- Non-blocking room/challenge cleanup (never freeze on the end screen).
+          pvpBattleSend({ action = "clear_challenge", trainerId = myId })
+          pvpBattleSend({ action = "clear_challenge", trainerId = opponentId })
+          pvpBattleSend({ action = "clear_battle_room", roomId = roomId })
+          if battle and battle.outcome == "win" then
+            addMmoXp(game, "pvp_win", nil, { opponentName = opponentName or "TRAINER", opponentId = opponentId or "0" })
+            syncLocalProfile(game, 1)
+            performForcedSave(game)
+          elseif battle then
+            addMmoXp(game, "pvp_loss", nil, { opponentName = opponentName or "TRAINER", opponentId = opponentId or "0" })
+            performForcedSave(game)
+          end
+        end,
+      })
+      game.stack:push(ui)
       return
     end
 
     inBattle = true
     local trainerId, myName = getTrainerInfo(game.save)
-    local myPackedParty = Protocol.packParty(game.save.party)
+    local myPackedParty = packPartyForGame(game, game.save.party)
 
     local netAdapter = GtsNetAdapter.new(trainerId, opponentId, roomId)
 
@@ -1263,8 +1989,16 @@
   startLinkTrade = function(game, partnerName, partnerId, isHostPlayer, roomId)
     local myId, myName = getTrainerInfo(game.save)
 
-    if not game.save or not game.save.party or #game.save.party == 0 then
-      game.stack:push(TextBox.new(game, wrapText("YOU HAVE NO POKéMON TO TRADE!")))
+    if isGen2 then
+      -- The engine's LinkState (link cable trade) is Gen 1 only; a Gen 2
+      -- (Gold) trade room is not ported yet, so refuse cleanly instead of
+      -- crashing once both sides reach the party selection screen.
+      game.stack:push(TextBox.new(game, wrapText("LINK TRADES ARE NOT YET SUPPORTED ON GOLD (GEN 2).")))
+      return
+    end
+    -- A trade needs one mon to offer and one to keep.
+    if not game.save or not game.save.party or #game.save.party < 2 then
+      game.stack:push(TextBox.new(game, wrapText("YOU NEED AT LEAST 2 POKÃ©MON IN YOUR PARTY TO TRADE!")))
       return
     end
 
@@ -1393,6 +2127,7 @@
   -- connection mid-play.
   local function disconnectOnTitle(game)
     if not isGtsServerConnected then return end
+    if _G.__gtsQuitLogout then pcall(function() _G.__gtsQuitLogout(game) end) end
     if netSession then
       pcall(function() netSession:close() end)
       netSession = nil
@@ -1422,43 +2157,60 @@
     end
   end
 
-  -- REAL-TIME TILE-BY-TILE 1X SPRITE MOVEMENT (Max 1 Directional Tile at a time, No Warping/Flickering)
+  -- REAL-TIME SMOOTH VECTOR INTERPOLATION & AUTHENTIC TILE-STEP ANIMATION
   local function updateNpcMovement(npc, dt)
     if not npc or not npc.targetPx or not npc.targetPy then return end
+
+    dt = math.min(dt or 0.01667, 0.05)
+    local now = (_G.love and _G.love.timer and _G.love.timer.getTime) and _G.love.timer.getTime() or os.time()
 
     local dx = npc.targetPx - npc.px
     local dy = npc.targetPy - npc.py
     local dist = math.sqrt(dx * dx + dy * dy)
 
-    -- If map changed or wildly out of bounds (> 320 px, e.g. map reload), snap cleanly
-    if dist > 320 then
+    -- If map changed or wildly out of bounds (> 256 px / 16 tiles), snap cleanly
+    if dist > 256 then
       npc.px = npc.targetPx
       npc.py = npc.targetPy
-      npc.cellX = npc.targetCellX or math.floor(npc.px / 16)
-      npc.cellY = npc.targetCellY or math.floor(npc.py / 16)
+      npc.cellX = npc.targetCellX or math.floor((npc.px + 8) / 16)
+      npc.cellY = npc.targetCellY or math.floor((npc.py + 8) / 16)
       npc.x = npc.cellX
       npc.y = npc.cellY
       npc.moving = false
-      npc.progress = 0
+      npc.stillTimer = 0
+      npc.stepProgress = 0
       npc.animClock = 0
+      npc.facing = npc.targetFacing or npc.facing
       return
     end
 
     if dist > 0.5 then
-      -- Lock movement speed to standard 1X walking speed (96 px/sec = 1 tile per 10 frames at 60fps)
-      local walkSpeed = 96
-      local maxStep = 16
-      local step = math.min(dist, walkSpeed * (dt or 0.01667), maxStep)
+      -- Dynamic speed calibrated to Game Boy step rates:
+      -- 1X normal walk: 64 px/s (16px in 15 frames = ~250ms per tile).
+      -- Catch-up speed: if lagging behind (>16px), scale smoothly up to 120-160 px/s so the gap closes naturally.
+      local speed = 64
+      if dist > 32 then
+        speed = math.min(180, dist * 4.0)
+      elseif dist > 16 then
+        speed = 96
+      end
 
-      -- Move along primary axis first (cardinal tile-by-tile movement)
-      if math.abs(dx) > math.abs(dy) then
-        local dirSign = dx > 0 and 1 or -1
-        npc.px = npc.px + dirSign * step
+      local maxStep = speed * dt
+      local step = math.min(dist, maxStep)
+
+      -- Smooth 2D normalized translation
+      local dirX = dx / dist
+      local dirY = dy / dist
+      npc.px = npc.px + dirX * step
+      npc.py = npc.py + dirY * step
+
+      -- Facing direction: orient along the dominant movement vector
+      if math.abs(dx) > math.abs(dy) * 1.1 then
         npc.facing = dx > 0 and "right" or "left"
-      else
-        local dirSign = dy > 0 and 1 or -1
-        npc.py = npc.py + dirSign * step
+      elseif math.abs(dy) > math.abs(dx) * 1.1 then
         npc.facing = dy > 0 and "down" or "up"
+      elseif npc.targetFacing then
+        npc.facing = npc.targetFacing
       end
 
       npc.cellX = math.floor((npc.px + 8) / 16)
@@ -1467,22 +2219,62 @@
       npc.y = npc.cellY
 
       npc.moving = true
-      npc.animClock = (npc.animClock or 0) + 1
-      npc.progress = (npc.progress or 0) + step * 2.5
-      if (npc.progress or 0) >= 16 then
-        npc.progress = 0
+      npc.stillTimer = 0
+
+      -- Leg step animation: advance animClock smoothly at 60Hz and flip legs every 16px of travel
+      npc.animClock = (npc.animClock or 0) + (dt * 60)
+      npc.stepProgress = (npc.stepProgress or 0) + step
+      if npc.stepProgress >= 16 then
+        npc.stepProgress = npc.stepProgress - 16
         npc.stepFlip = not npc.stepFlip
       end
     else
-      -- Snapped cleanly into target cell
+      -- Reached destination waypoint
       npc.px = npc.targetPx
       npc.py = npc.targetPy
-      npc.cellX = npc.targetCellX or math.floor(npc.px / 16)
-      npc.cellY = npc.targetCellY or math.floor(npc.py / 16)
+      npc.cellX = npc.targetCellX or math.floor((npc.px + 8) / 16)
+      npc.cellY = npc.targetCellY or math.floor((npc.py + 8) / 16)
       npc.x = npc.cellX
       npc.y = npc.cellY
-      npc.moving = false
-      npc.progress = 0
+
+      if npc.targetFacing then
+        npc.facing = npc.targetFacing
+      end
+
+      local timeSincePacket = now - (npc.lastPacketTime or now)
+
+      -- CONTINUOUS DEAD RECKONING (capped to ONE tile per packet):
+      -- If the remote player was actively moving on their client (serverMoving
+      -- == true), the packet was recent (<0.45s), and we have not already
+      -- predicted a tile ahead since the last real packet, predictively step
+      -- into the next tile instead of stuttering. The `predicting` flag is
+      -- reset by syncMultiNetPlayers whenever a fresh server packet arrives,
+      -- so this NEVER chains multiple predicted tiles ahead — which is what
+      -- made the sprite walk off the map and then teleport back.
+      if npc.serverMoving and timeSincePacket < 0.45 and not npc.predicting then
+        npc.predicting = true
+        local delta = Collision.DELTA[npc.facing] or { 0, 1 }
+        npc.targetPx = npc.px + delta[1] * 16
+        npc.targetPy = npc.py + delta[2] * 16
+        npc.targetCellX = npc.cellX + delta[1]
+        npc.targetCellY = npc.cellY + delta[2]
+        npc.moving = true
+        npc.stillTimer = 0
+        npc.animClock = (npc.animClock or 0) + (dt * 60)
+        npc.stepProgress = (npc.stepProgress or 0) + (64 * dt)
+        if npc.stepProgress >= 16 then
+          npc.stepProgress = npc.stepProgress - 16
+          npc.stepFlip = not npc.stepFlip
+        end
+      else
+        -- Remote player is genuinely stationary
+        npc.stillTimer = (npc.stillTimer or 0) + dt
+        if npc.stillTimer >= 0.05 then
+          npc.moving = false
+          npc.stepProgress = 0
+          npc.animClock = 0
+        end
+      end
     end
   end
 
@@ -1494,6 +2286,7 @@
 
     local activeIds = {}
     local currentMapId = tostring(ow.map.id)
+    local now = (_G.love and _G.love.timer and _G.love.timer.getTime) and _G.love.timer.getTime() or os.time()
 
     for _, data in ipairs(playersList or {}) do
       local tid = tostring(data.trainerId)
@@ -1504,56 +2297,59 @@
         netPlayerMap[tid] = data
 
         local facing = data.facing or "down"
-        local isMoving = data.moving or false
-        local destX = data.x or 5
-        local destY = data.y or 5
-        local originX = destX
-        local originY = destY
-        if isMoving then
-          local delta = Collision.DELTA[facing] or { 0, 1 }
-          originX = destX - delta[1]
-          originY = destY - delta[2]
-        end
+        local isMoving = (data.moving == true)
+        local destX = tonumber(data.x) or 5
+        local destY = tonumber(data.y) or 5
 
-        local targetPx = destX * 16
-        local targetPy = destY * 16
-        local originPx = originX * 16
-        local originPy = originY * 16
+        -- Accept high-res px/py if provided by sender, fallback to cell * 16
+        local targetPx = (type(data.px) == "number" and data.px) or (destX * 16)
+        local targetPy = (type(data.py) == "number" and data.py) or (destY * 16)
 
         if not netNpcs[tid] then
+          -- Initial spawn position
+          local initPx = targetPx
+          local initPy = targetPy
+          if isMoving and (type(data.px) ~= "number") then
+            local delta = Collision.DELTA[facing] or { 0, 1 }
+            initPx = (destX - delta[1]) * 16
+            initPy = (destY - delta[2]) * 16
+          end
+
           local pNpc = {
             trainerId = tid,
             isCoopPlayer = true,
             passable = true,
-            px = originPx,
-            py = originPy,
+            px = initPx,
+            py = initPy,
             targetPx = targetPx,
             targetPy = targetPy,
-            cellX = originX,
-            cellY = originY,
+            cellX = math.floor((initPx + 8) / 16),
+            cellY = math.floor((initPy + 8) / 16),
             targetCellX = destX,
             targetCellY = destY,
             facing = facing,
+            targetFacing = facing,
+            serverMoving = isMoving,
+            lastPacketTime = now,
+            packetInterval = 0.18,
+            moveSpeed = 96,
             name = data.name or "TRAINER",
             animClock = 0,
             stepFlip = false,
-            moving = false,
-            progress = 0,
+            moving = isMoving,
+            stepProgress = 0,
+            stillTimer = 0,
             walkPhase = function(self)
               if not self.moving then return 0 end
               local p = math.floor(self.animClock or 0) % 16
               return (p >= 4 and p < 12) and 1 or 0
             end,
-            draw = function(self, ox, oy, scale)
+            draw = function(self, camX, camY)
               if self.sprite then
-                local G = love.graphics
-                G.push()
-                G.translate(ox or 0, oy or 0)
-                G.scale(scale or 1, scale or 1)
+                -- Drawn through drawPeople / entity pass
                 self.sprite:draw(
-                  self.px, self.py, 0, 0,
+                  self.px, self.py, camX or 0, camY or 0,
                   self.facing, self:walkPhase(), self.stepFlip)
-                G.pop()
               end
             end
           }
@@ -1569,32 +2365,77 @@
             end
           end
 
+          -- Write remote-sprite diagnostic once so a missing sprite can be diagnosed
+          if not gtsSpriteDiagWritten then
+            gtsSpriteDiagWritten = true
+            pcall(function()
+              local f = _G.love and _G.love.filesystem
+              if f and f.write then
+                f.write("gts_sprite_diag.txt", string.format(
+                  "tid=%s spriteId=%s spriteCreated=%s spriteDef=%s spritesCount=%d\n",
+                  tostring(tid), tostring(data.spriteId),
+                  (pNpc.sprite and "yes") or "no",
+                  (spriteDef and spriteDef.id) or "nil",
+                  (type(sprites) == "table") and _G.next(sprites) and 1 or 0))
+              end
+            end)
+          end
+
           netNpcs[tid] = pNpc
         else
           local pNpc = netNpcs[tid]
-          if pNpc.targetPx ~= targetPx or pNpc.targetPy ~= targetPy then
-            pNpc.targetPx = targetPx
-            pNpc.targetPy = targetPy
-            pNpc.targetCellX = destX
-            pNpc.targetCellY = destY
-            pNpc.moving = true
+          local prevTime = pNpc.lastPacketTime or (now - 0.18)
+          local interval = now - prevTime
+          if interval > 0.05 and interval < 2.0 then
+            pNpc.packetInterval = interval
           end
-          pNpc.facing = facing
+          pNpc.lastPacketTime = now
+          pNpc.targetPx = targetPx
+          pNpc.targetPy = targetPy
+          pNpc.targetCellX = destX
+          pNpc.targetCellY = destY
+          pNpc.targetFacing = facing
+          pNpc.serverMoving = isMoving
+          pNpc.predicting = false
+
+          -- If spriteDef changed dynamically (e.g. avatar change), update sprite
+          local chosenRemoteSprite = data.spriteId or (isGen2 and "SPRITE_CHRIS" or "SPRITE_RED")
+          if not pNpc.sprite or (pNpc.spriteDef and pNpc.spriteDef.id ~= chosenRemoteSprite) then
+            local sprites = ow.sprites or (game and game.data and (game.data.gen2Sprites or game.data.sprites)) or {}
+            local spriteDef = sprites[chosenRemoteSprite] or sprites["SPRITE_CHRIS"] or sprites["SPRITE_RED"]
+            if spriteDef and (not pNpc.spriteDef or pNpc.spriteDef ~= spriteDef) then
+              pNpc.spriteDef = spriteDef
+              pNpc.sprite = SpriteRenderer.new(spriteDef, tonumber(tid) or 1)
+              if ow.applySpritePalette then pcall(ow.applySpritePalette, ow, pNpc) end
+            end
+          end
         end
       end
     end
 
     for tid, pNpc in pairs(netNpcs) do
       if not activeIds[tid] then
-        netNpcs[tid] = nil
-        netPlayerMap[tid] = nil
+        removeNetPlayer(ow, tid)
       end
     end
   end
 
+  -- Register persistent background jobs for asynchronous MMO coordination
+  Jobs.submit("network_sync", function(job, game, dt)
+    processGlobalThreadMessages(game)
+  end, nil, true)
+
+  Jobs.submit("overworld_placement", function(job, game, dt)
+    local ow = getWorld(game)
+    if ow and isGtsServerConnected then
+      for _, pNpc in pairs(netNpcs) do updateNpcMovement(pNpc, dt) end
+      for _, fNpc in pairs(netFollowers) do updateNpcMovement(fNpc, dt) end
+    end
+  end, nil, true)
+
   local function getRankTitle(level, pvpWins)
     level = tonumber(level) or 1
-    if level >= 100 then return "POKéMON LEGEND"
+    if level >= 100 then return "POKÃ©MON LEGEND"
     elseif level >= 90 then return "GRAND MASTER"
     elseif level >= 80 then return "CHAMPION"
     elseif level >= 70 then return "ELITE FOUR"
@@ -1751,7 +2592,7 @@
           end
 
           if #eligibleSlots == 0 then
-            game.stack:push(TextBox.new(game, wrapText("YOU DO NOT HAVE ANY OF THE WANTED POKéMON!")))
+            game.stack:push(TextBox.new(game, wrapText("YOU DO NOT HAVE ANY OF THE WANTED POKÃ©MON!")))
             return
           end
 
@@ -1816,10 +2657,10 @@
         Font.draw(string.format("OFFER: %s", offName:sub(1, 11)), 8, 32)
         Font.draw(string.format("LEVEL: %d", offered.level or 1), 8, 44)
         Font.draw(string.format("OT: %s (ID %s)", otName:sub(1, 6), tostring(listing.trainerId or 0):sub(1,6)), 8, 56)
-        Font.draw("WANTED POKéMON:", 8, 68)
+        Font.draw("WANTED POKÃ©MON:", 8, 68)
 
         if #wantedList == 0 then
-          Font.draw(" - ANY POKéMON", 8, 80)
+          Font.draw(" - ANY POKÃ©MON", 8, 80)
         else
           local curY = 80
           for _, wSpec in ipairs(wantedList) do
@@ -2031,7 +2872,7 @@
                     end
                   end
                   if #monItems == 0 then
-                    game.stack:push(TextBox.new(game, wrapText("NO POKéMON IN THIS RANGE.")))
+                    game.stack:push(TextBox.new(game, wrapText("NO POKÃ©MON IN THIS RANGE.")))
                   else
                     table.insert(monItems, { label = "BACK", onSelect = function() showMainWantedMenu() end })
                     game.stack:push(Menu.new(game, monItems, { tx = 0, ty = 0, tw = 20, maxVisible = 7, startCloses = true }))
@@ -2076,7 +2917,7 @@
     end
 
     if not game.save or not game.save.party or #game.save.party < 2 then
-      game.stack:push(TextBox.new(game, wrapText("YOU NEED AT LEAST 2 POKéMON IN PARTY TO DEPOSIT!")))
+      game.stack:push(TextBox.new(game, wrapText("YOU NEED AT LEAST 2 POKÃ©MON IN PARTY TO DEPOSIT!")))
       return
     end
 
@@ -2185,7 +3026,7 @@
   -- Customize Local Trainer Profile Submenu ("ONLINE SETTINGS")
   openMyProfileMenu = function(game)
     local titles = {
-      "ACE TRAINER", "BUG CATCHER", "POKéMANIAC", "LASS", "YOUNGSTER",
+      "ACE TRAINER", "BUG CATCHER", "POKÃ©MANIAC", "LASS", "YOUNGSTER",
       "CHAMPION", "GYM LEADER", "BLACKBELT", "SUPER NERD", "COOLTRAINER"
     }
 
@@ -2247,7 +3088,7 @@
         label = "FAVORITE MON",
         onSelect = function()
           if not game.save or not game.save.party or #game.save.party == 0 then
-            game.stack:push(TextBox.new(game, wrapText("YOU HAVE NO POKéMON IN YOUR PARTY!")))
+            game.stack:push(TextBox.new(game, wrapText("YOU HAVE NO POKÃ©MON IN YOUR PARTY!")))
             return
           end
           local favItems = {}
@@ -2261,7 +3102,7 @@
                   game.save.onlineAccount.favoriteMon = mName
                 end
                 syncLocalProfile(game, 0)
-                local msg = string.format("FAVORITE POKéMON SET TO:\n%s!", mName)
+                local msg = string.format("FAVORITE POKÃ©MON SET TO:\n%s!", mName)
                 game.stack:push(TextBox.new(game, wrapText(msg)))
               end
             })
@@ -2433,7 +3274,7 @@
               title = localTrainerTitle,
               badges = 0,
               pokedexCount = 0
-            }, 2.0)
+            }, 10.0)
 
             if res and res.success and res.account then
               local acc = res.account
@@ -2492,7 +3333,7 @@
                 local followerSpecies = game.save.party and game.save.party[1] and game.save.party[1].species
 
                 netOutChannel:push({
-                  url = GTS_SERVER_URL .. "/gts",
+                  url = getServerUrl() .. "/gts",
                   body = Json.encode({
                     action = "sync_pos",
                     modVersion = MOD_VERSION,
@@ -2523,7 +3364,7 @@
                 openOnlineOptionsMenu(game)
               end))
             else
-              local err = (res and res.error) or "NETWORK_ERROR"
+              local err = (res and res.error) or netDiagReport()
               local errMsg = string.format("COULD NOT CREATE PLAYER!\n%s", err)
               game.stack:push(TextBox.new(game, wrapText(errMsg)))
             end
@@ -2867,6 +3708,13 @@
   end
 
     -- Online Options Menu (Shown in Start Menu once connected)
+  openServerUrlMenu = function(game)
+    loadServerUrl()
+    local cur = getServerUrl()
+    local info = string.format("CURRENT SERVER:\n%s\n\nTO CHANGE THE SERVER URL:\nEDIT gts_config.txt NEXT TO\nmain.lua, THEN RESTART\nTHE GAME.\n\nFORMAT:\nserver_url=<URL>", cur)
+    game.stack:push(TextBox.new(game, wrapText(info)))
+  end
+
   openOnlineOptionsMenu = function(game)
     local trainerId, trainerName = getTrainerInfo(game.save)
     loadOnlineAccount(game.save)
@@ -2898,6 +3746,10 @@
       {
         label = "ONLINE SETTINGS",
         onSelect = function() openMyProfileMenu(game) end
+      },
+      {
+        label = "SERVER URL",
+        onSelect = function() openServerUrlMenu(game) end
       },
       {
         label = string.format("VERSION: V%s", MOD_VERSION),
@@ -2966,7 +3818,7 @@
   end
 
   handleConnectToServer = function(game)
-    -- 0. Enforce Pokémon Gold (Gen 2) Only
+    -- 0. Enforce PokÃ©mon Gold (Gen 2) Only
     if not isGen2 then
       game.stack:push(TextBox.new(game, wrapText("THE ONLINE SERVER HAS MIGRATED EXCLUSIVELY TO POKEMON GOLD (GEN 2)!\nPLEASE LAUNCH POKEMON GOLD TO PLAY ONLINE.")))
       return
@@ -3064,7 +3916,6 @@
 
     syncLocalProfile(game, 0)
     local tid, currentName = getTrainerInfo(game.save)
-    fetchGtsServerSync(tid)
 
     if ow and ow.player and ow.map and netOutChannel then
       local p = ow.player
@@ -3072,7 +3923,7 @@
       local followerSpecies = game and game.save and game.save.party and game.save.party[1] and game.save.party[1].species
 
       netOutChannel:push({
-        url = GTS_SERVER_URL .. "/gts",
+        url = getServerUrl() .. "/gts",
         body = Json.encode({
           action = "sync_pos",
           modVersion = MOD_VERSION,
@@ -3105,10 +3956,41 @@
   end
   _G.gtsConnectToServer = handleConnectToServer
 
+  -- Active server logout (used by quit-to-title and the START-menu QUIT item).
+  -- Stored on _G so the big returned function below does not need to capture
+  -- the extra locals (LuaJIT's 60-upvalue cap on that closure).
+  _G.__gtsQuitLogout = function(game)
+    if not isGtsServerConnected then return end
+    local tid = getTrainerInfo(game and game.save)
+    if tid then
+      pvpBattleSend({ action = "logout", trainerId = tid })
+      pvpBattleSend({ action = "clear_challenge", trainerId = tid })
+    end
+  end
+
 
 return function(mod)
   currentMod = mod
   print("[Gen1Online] Initializing Gen1Online Asynchronous Threaded 60FPS MMO Mod...")
+
+  -- Wrap the START-menu QUIT / EXIT item so the player is actively logged out
+  -- of the server before the app closes (never leave a ghost online).
+  local function wrapQuitItems(game, list)
+    if not list then return end
+    for i, item in ipairs(list) do
+      if item and item.label then
+        local lbl = tostring(item.label):upper()
+        if lbl == "QUIT" or lbl:find("EXIT") or lbl:find("SHUTDOWN") then
+          local origSelect = item.onSelect
+          item.onSelect = function(...)
+            if _G.__gtsQuitLogout then pcall(function() _G.__gtsQuitLogout(game) end) end
+            if origSelect then origSelect(...) end
+          end
+        end
+      end
+    end
+  end
+
   -- Hook Start Menu (identical method as DebugMenu)
   mod.hooks:wrap("ui.start_menu.items", function(nextFn, game, items)
     local list = nextFn and nextFn(game, items) or items
@@ -3152,6 +4034,7 @@ return function(mod)
     end
 
     table.insert(list, targetIndex, connectItem)
+    wrapQuitItems(game, list)
     return list
   end)
 
@@ -3189,7 +4072,7 @@ return function(mod)
 
   -- 1. Battles Finished (Wild & Trainer Battles) - Handled in BattleState.finish hook below to prevent double XP triggers
 
-  -- 2. Pokémon Caught
+  -- 2. PokÃ©mon Caught
   onEvent("pokemon.caught", function(payload)
     if Game and Game.save then
       addMmoXp(Game, "catch")
@@ -3198,7 +4081,7 @@ return function(mod)
     end
   end)
 
-  -- 3. Pokémon Evolved & Move Learned
+  -- 3. PokÃ©mon Evolved & Move Learned
   onEvent("pokemon.evolved", function(payload)
     if Game and Game.save then
       addMmoXp(Game, "breeding", 50)
@@ -3219,7 +4102,7 @@ return function(mod)
     end
   end)
 
-  -- 4. Trades & Pokémon Received
+  -- 4. Trades & PokÃ©mon Received
   onEvent("trade.completed", function(payload)
     if Game and Game.save then
       performForcedSave(Game)
@@ -3290,14 +4173,11 @@ return function(mod)
     clearAllNetPlayers(self)
     local res = origSetMap(self, mapId, cellX, cellY, facing)
     lastPlayerMap = mapId
-    if isGtsServerConnected and Game and Game.save then
-      if Game.save.position then
-        Game.save.position.map = mapId
-        Game.save.position.x = cellX or Game.save.position.x or 3
-        Game.save.position.y = cellY or Game.save.position.y or 6
-        Game.save.position.facing = facing or Game.save.position.facing or "down"
-      end
-      writeOnlineSave(Game.save)
+    if isGtsServerConnected and Game and Game.save and Game.save.position then
+      Game.save.position.map = mapId
+      Game.save.position.x = cellX or Game.save.position.x or 3
+      Game.save.position.y = cellY or Game.save.position.y or 6
+      Game.save.position.facing = facing or Game.save.position.facing or "down"
     end
     if NPCs and NPCs.spawnForMap then pcall(NPCs.spawnForMap, self) end
     return res
@@ -3331,11 +4211,12 @@ return function(mod)
     -- Canvas-space cull, window-space placement: only tags on the view (with
     -- a margin) are drawn, and each lands just above its sprite.
     local function drawHeaderTag(nameStr, wx, wy)
+      local cleanName = tostring(nameStr or "TRAINER"):gsub("_", " ")
       local cx = math.floor(wx - camX)
       local cy = math.floor(wy - camY - 16)
       if cx >= -48 and cx <= 208 and cy >= -48 and cy <= 192 then
-        Font.draw(nameStr,
-          math.floor(ox + cx * s) - math.floor(#nameStr * 3),
+        Font.draw(cleanName,
+          math.floor(ox + cx * s) - math.floor(#cleanName * 3),
           math.floor(oy + cy * s))
       end
     end
@@ -3378,7 +4259,7 @@ return function(mod)
         local delta = Collision.DELTA[p.facing] or { 0, 1 }
         local followerSpecies = Game.save.party and Game.save.party[1] and Game.save.party[1].species
         netOutChannel:push({
-          url = GTS_SERVER_URL .. "/gts",
+          url = getServerUrl() .. "/gts",
           body = Json.encode({
             action = "sync_pos",
             trainerId = trainerId,
@@ -3410,9 +4291,8 @@ return function(mod)
     if origOverworldUpdate then origOverworldUpdate(self, dt) end
     if not Game or not isGtsServerConnected then return end
 
-    -- 1. Lerp smooth movement for all active MMO players and followers at 100% 60 FPS
-    for _, pNpc in pairs(netNpcs) do updateNpcMovement(pNpc, dt) end
-    for _, fNpc in pairs(netFollowers) do updateNpcMovement(fNpc, dt) end
+    -- 1. Advance all registered background jobs (network sync & overworld placement)
+    Jobs.step(Game, dt)
 
     -- 2. Push position to background network queue (Rate limited to preserve 60FPS fluid gameplay)
     local ow = self
@@ -3420,12 +4300,15 @@ return function(mod)
     if p and ow.map and netOutChannel then
       local now = (_G.love and _G.love.timer and _G.love.timer.getTime) and _G.love.timer.getTime() or os.time()
       local positionChanged = (p.cellX ~= lastPlayerX) or (p.cellY ~= lastPlayerY) or (ow.map.id ~= lastPlayerMap)
+      local movingChanged = (p.moving ~= lastPlayerMoving)
+      local isMoving = (p.moving == true) or positionChanged
 
-      if (positionChanged and now - lastSendTime >= 0.25) or (now - lastSendTime >= 0.75) then
+      if movingChanged or (isMoving and now - lastSendTime >= 0.10) or (now - lastSendTime >= 2.0) then
         lastSendTime = now
         lastPlayerX = p.cellX
         lastPlayerY = p.cellY
         lastPlayerMap = ow.map.id
+        lastPlayerMoving = p.moving
 
         if Game and Game.save and Game.save.position then
           Game.save.position.map = ow.map.id
@@ -3466,11 +4349,35 @@ return function(mod)
         }
 
         netOutChannel:push({
-          url = GTS_SERVER_URL .. "/gts",
+          url = getServerUrl() .. "/gts",
           body = Json.encode(payload)
         })
 
         processGlobalThreadMessages(Game)
+      end
+    end
+  end
+
+  -- Hook Gen 1 Overworld drawWorld to render remote player sprites
+  if not isGen2 and type(OverworldState) == "table" then
+    local dwKey = "draw" .. "World"
+    local origGen1DrawWorld = OverworldState[dwKey]
+    if origGen1DrawWorld then
+      OverworldState[dwKey] = function(self)
+        local res = origGen1DrawWorld(self)
+        if isGtsServerConnected and self.camera and next(netNpcs) then
+          local cam = self.camera
+          for _, pNpc in pairs(netNpcs) do
+            if pNpc and pNpc.sprite and pNpc.px and pNpc.py then
+              pcall(function()
+                pNpc.sprite:draw(
+                  pNpc.px, pNpc.py, cam.x or 0, cam.y or 0,
+                  pNpc.facing, pNpc:walkPhase(), pNpc.stepFlip)
+              end)
+            end
+          end
+        end
+        return res
       end
     end
   end
@@ -3518,11 +4425,11 @@ return function(mod)
             label = "PVP 1V1 SINGLES",
             onSelect = function()
               if not Game.save or not Game.save.party or #Game.save.party == 0 then
-                Game.stack:push(TextBox.new(Game, wrapText("YOU NEED AT LEAST 1 POKéMON IN YOUR PARTY TO BATTLE!")))
+                Game.stack:push(TextBox.new(Game, wrapText("YOU NEED AT LEAST 1 POKÃ©MON IN YOUR PARTY TO BATTLE!")))
                 return
               end
               local myId, myName = getTrainerInfo(Game.save)
-              local myPackedParty = Protocol.packParty(Game.save.party)
+              local myPackedParty = packPartyForGame(Game, Game.save.party)
               local linkSeed = math.random(1, 2^30)
               local roomId = "BATTLE_"
                 .. tostring(math.min(tonumber(myId) or 0, tonumber(targetTid) or 0))
@@ -3550,7 +4457,7 @@ return function(mod)
             label = "LINK TRADE",
             onSelect = function()
               if not Game.save or not Game.save.party or #Game.save.party == 0 then
-                Game.stack:push(TextBox.new(Game, wrapText("YOU NEED AT LEAST 1 POKéMON IN YOUR PARTY TO TRADE!")))
+                Game.stack:push(TextBox.new(Game, wrapText("YOU NEED AT LEAST 1 POKÃ©MON IN YOUR PARTY TO TRADE!")))
                 return
               end
               local myId, myName = getTrainerInfo(Game.save)
@@ -3608,7 +4515,6 @@ return function(mod)
           curGame.save.position.y = cy or (self.player and self.player.cellY) or defaultStartingOutdoorY
           curGame.save.position.facing = facing or (self.player and self.player.facing) or "down"
         end
-        writeOnlineSave(curGame.save)
       end
       if NPCs and NPCs.spawnForMap then pcall(NPCs.spawnForMap, self) end
       return res
@@ -3650,6 +4556,35 @@ return function(mod)
         end
         for _, pNpc in pairs(netNpcs) do updateNpcMovement(pNpc, dt) end
         for _, fNpc in pairs(netFollowers) do updateNpcMovement(fNpc, dt) end
+
+        local now = (_G.love and _G.love.timer and _G.love.timer.getTime) and _G.love.timer.getTime() or os.time()
+        if now - lastSendTime >= 0.15 and self.player and self.map and netOutChannel then
+          lastSendTime = now
+          local trainerId, trainerName = getTrainerInfo(curGame.save)
+          local p = self.player
+          local delta = Collision.DELTA[p.facing] or { 0, 1 }
+          local followerSpecies = curGame.save and curGame.save.party and curGame.save.party[1] and curGame.save.party[1].species
+          netOutChannel:push({
+            url = getServerUrl() .. "/gts",
+            body = Json.encode({
+              action = "sync_pos",
+              trainerId = trainerId,
+              sessionId = clientSessionId,
+              name = trainerName,
+              title = localTrainerTitle,
+              map = self.map.id,
+              x = p.cellX,
+              y = p.cellY,
+              px = p.px,
+              py = p.py,
+              fx = p.cellX - delta[1],
+              fy = p.cellY - delta[2],
+              facing = p.facing,
+              moving = false,
+              species = followerSpecies
+            })
+          })
+        end
         return
       end
 
@@ -3661,19 +4596,22 @@ return function(mod)
       if not curGame or not isGtsServerConnected then return end
 
       local dt = 1 / 60
-      for _, pNpc in pairs(netNpcs) do updateNpcMovement(pNpc, dt) end
-      for _, fNpc in pairs(netFollowers) do updateNpcMovement(fNpc, dt) end
+      -- Advance all registered background jobs (network sync & overworld placement)
+      Jobs.step(curGame, dt)
 
       local p = self.player
-      if p and self.map and netOutChannel and not p.moving then
+      if p and self.map and netOutChannel then
         local now = (_G.love and _G.love.timer and _G.love.timer.getTime) and _G.love.timer.getTime() or os.time()
         local positionChanged = (p.cellX ~= lastPlayerX) or (p.cellY ~= lastPlayerY) or (self.map.id ~= lastPlayerMap)
+        local movingChanged = (p.moving ~= lastPlayerMoving)
+        local isMoving = (p.moving == true) or positionChanged
 
-        if (positionChanged and now - lastSendTime >= 0.35) or (now - lastSendTime >= 2.0) then
+        if movingChanged or (isMoving and now - lastSendTime >= 0.10) or (now - lastSendTime >= 2.0) then
           lastSendTime = now
           lastPlayerX = p.cellX
           lastPlayerY = p.cellY
           lastPlayerMap = self.map.id
+          lastPlayerMoving = p.moving
 
           if curGame.save and curGame.save.player then
             curGame.save.player.map = self.map.id
@@ -3714,14 +4652,16 @@ return function(mod)
             fx = fx,
             fy = fy,
             facing = p.facing,
-            moving = false,
+            moving = p.moving,
             species = followerSpecies
           }
 
           netOutChannel:push({
-            url = GTS_SERVER_URL .. "/gts",
+            url = getServerUrl() .. "/gts",
             body = Json.encode(payload)
           })
+
+          processGlobalThreadMessages(curGame)
         end
       end
     end
@@ -3753,11 +4693,11 @@ return function(mod)
               label = "PVP 1V1 SINGLES",
               onSelect = function()
                 if not curGame.save or not curGame.save.party or #curGame.save.party == 0 then
-                  curGame.stack:push(TextBox.new(curGame, wrapText("YOU NEED AT LEAST 1 POKéMON IN YOUR PARTY TO BATTLE!")))
+                  curGame.stack:push(TextBox.new(curGame, wrapText("YOU NEED AT LEAST 1 POKÃ©MON IN YOUR PARTY TO BATTLE!")))
                   return
                 end
                 local myId, myName = getTrainerInfo(curGame.save)
-                local myPackedParty = Protocol.packParty(curGame.save.party)
+                local myPackedParty = packPartyForGame(curGame, curGame.save.party)
                 local linkSeed = math.random(1, 2^30)
                 local roomId = "BATTLE_"
                   .. tostring(math.min(tonumber(myId) or 0, tonumber(targetTid) or 0))
@@ -3785,7 +4725,7 @@ return function(mod)
               label = "LINK TRADE",
               onSelect = function()
                 if not curGame.save or not curGame.save.party or #curGame.save.party == 0 then
-                  curGame.stack:push(TextBox.new(curGame, wrapText("YOU NEED AT LEAST 1 POKéMON IN YOUR PARTY TO TRADE!")))
+                  curGame.stack:push(TextBox.new(curGame, wrapText("YOU NEED AT LEAST 1 POKÃ©MON IN YOUR PARTY TO TRADE!")))
                   return
                 end
                 local myId, myName = getTrainerInfo(curGame.save)
@@ -3817,17 +4757,83 @@ return function(mod)
       end
       return origGen2Interact and origGen2Interact(self)
     end
+
+    -- 5. Gen 2 remote player sprite drawing. netNpcs are NOT part of self.npcs,
+    -- so the engine never rendered them (name tags drew via render.hud, sprites
+    -- were invisible). Hook drawPeople (called by both the flat drawWorldBody
+    -- path and the tilt path) and draw each remote sprite using the SAME
+    -- transform the local player uses (src/world/gen2/Player.lua:198):
+    -- translate by the camera offset, scale by the zoom, then sprite:draw at
+    -- the entity's own world px/py. This keeps size, position and animation in
+    -- lockstep with the local character.
+    if Gen2World.drawPeople then
+      local origGen2DrawPeople = Gen2World.drawPeople
+      local drawDiagTime = 0
+      Gen2World.drawPeople = function(self, s, billboard)
+        local res = origGen2DrawPeople(self, s, billboard)
+        local drawn = 0
+        if isGtsServerConnected and self.camera and next(netNpcs) then
+          local cam = self.camera
+          local ox = (0 - (cam.x or 0)) * (s or 1)
+          local oy = (0 - (cam.y or 0)) * (s or 1)
+          local G = love.graphics
+          for _, pNpc in pairs(netNpcs) do
+            if pNpc and pNpc.sprite and pNpc.px and pNpc.py then
+              pcall(function()
+                G.push()
+                G.translate(ox, oy)
+                G.scale(s or 1, s or 1)
+                pNpc.sprite:draw(
+                  pNpc.px, pNpc.py, 0, 0,
+                  pNpc.facing, pNpc:walkPhase(), pNpc.stepFlip)
+                G.pop()
+              end)
+              drawn = drawn + 1
+            end
+          end
+        end
+        -- Diagnostic (throttled): confirms this hook fires and how many
+        -- remote sprites were drawn. Look for gts_draw_diag.txt next to
+        -- gts_sprite_diag.txt.
+        local nowD = (_G.love and _G.love.timer and _G.love.timer.getTime) and _G.love.timer.getTime() or os.time()
+        if drawDiagTime == 0 or nowD - drawDiagTime >= 3.0 then
+          drawDiagTime = nowD
+          local nCount = 0
+          for _ in pairs(netNpcs) do nCount = nCount + 1 end
+          pcall(function()
+            local f = _G.love and _G.love.filesystem
+            if f and f.write then
+              f.write("gts_draw_diag.txt", string.format(
+                "fired=yes netNpcs=%d drawn=%d camX=%s camY=%s s=%s\n",
+                nCount, drawn,
+                tostring(self.camera and self.camera.x or "nil"),
+                tostring(self.camera and self.camera.y or "nil"),
+                tostring(s)))
+            end
+          end)
+        end
+        return res
+      end
+    end
   end
 
   -- Wrap Game.update to continuously service active GtsNetAdapter during battle
   mod.hooks:wrap("core.update", function(nextFn, game, dt)
     if nextFn then nextFn(game, dt) end
 
-    -- Continuous frame service for background thread battle messages
-    processGlobalThreadMessages(game)
+    -- Continuous frame service for background jobs (sync, placement, and battle messages)
+    Jobs.step(game, dt)
+    -- Advance the non-blocking sync client every frame (non-blocking and
+    -- crash-proof) so it can complete requests and recover from stalls.
+    asyncPoll()
 
     -- Low-rate keepalive ping (only when player is stationary / in menu)
     local gWorld = getWorld(game)
+    -- If the session is disconnected, tear down any leftover async connection
+    -- so a stale engine can't interfere with a later reconnect.
+    if not isGtsServerConnected and asyncSock then
+      asyncReset("disconnected")
+    end
     if isGtsServerConnected and not isWaitingForChallenge and gWorld
        and gWorld.player and gWorld.map and netOutChannel then
       local ow = gWorld
@@ -3844,7 +4850,7 @@ return function(mod)
         local delta = Collision.DELTA[p.facing] or { 0, 1 }
 
         netOutChannel:push({
-          url = GTS_SERVER_URL .. "/gts",
+          url = getServerUrl() .. "/gts",
           body = Json.encode({
             action = "sync_pos",
             trainerId = trainerId,

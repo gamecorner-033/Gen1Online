@@ -12,3 +12,7 @@ gts_database.json
 players_backup.json
 private_ip_ledger.json
 server_secrets.json
+# Distribution artifacts are produced from this folder and must not nest inside
+# a rebuilt archive (they are the output, not the source).
+mod.zip
+*.modpkg

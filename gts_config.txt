@@ -1,0 +1,13 @@
+# Gen1Online server configuration.
+# Edit this file to point the game at your GTS server, then restart the game.
+#
+# For a local server on the same PC:
+#   server_url=http://127.0.0.1:7779
+#
+# For a Cloudflare tunnel (give this URL to remote test devices):
+#   server_url=https://menu-dose-replication-bingo.trycloudflare.com/
+#
+# The value is read from this file at game startup. No rebuild is needed.
+# Just edit this file and restart the game.
+
+server_url=https://menu-dose-replication-bingo.trycloudflare.com/
