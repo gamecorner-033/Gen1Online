@@ -107,6 +107,9 @@
     return GTS_SERVER_URL
   end
   local isGtsServerConnected = false -- Explicit manual connection required via menu
+  -- The live game instance (set every frame in core.update) so writeOnlineSave
+  -- can snapshot the world before persisting flags/mapScenes/scriptMem.
+  local currentGame = nil
 
   -- Universal Overworld / World accessor for Gen 1 (overworld) and Gen 2 (world)
   local function getWorld(g)
@@ -1662,6 +1665,19 @@
   end
 
   writeOnlineSave = function(saveTable)
+    -- ALWAYS fold the live world state in first: game.save.events, mapScenes,
+    -- variableSprites, scriptMem, playerState and backupWarp are only written
+    -- into the save by Game2:snapshotSave(). Writing game.save without it
+    -- persists stale/empty flag tables, which is what softlocks the overworld
+    -- (Rival stuck outside Elm's Lab, Route 30/32 blockers never moving).
+    if currentGame and currentGame.snapshotSave then
+      pcall(function() currentGame:snapshotSave() end)
+    end
+    if currentGame and currentGame.save and type(currentGame.save) == "table" then
+      -- Write the authoritative snapshotted live save so flags/mapScenes are
+      -- never lost even if the caller handed us a stale or copied table.
+      saveTable = currentGame.save
+    end
     if not saveTable or type(saveTable) ~= "table" then return false end
     storageWrite("online_save", saveTable)
     if saveTable.onlineAccount then
@@ -3182,58 +3198,87 @@
           if acc.favoriteMon then localFavoriteMon = acc.favoriteMon end
 
           local newSave = nil
-          if isGen2 then
-            local okGen2Save, Gen2SaveModule = pcall(require, "src.core.gen2.Save")
-            if okGen2Save and Gen2SaveModule and Gen2SaveModule.newGame then
-              newSave = Gen2SaveModule.newGame({ playerName = acc.name or "GOLD" })
-            end
+          -- Restore the existing online save (party, flags, map scenes,
+          -- inventory, position) when one is present for THIS account; only
+          -- build a fresh save when there is nothing to restore (e.g. first
+          -- time on a new device).
+          local restoredSave = loadOnlineSave(game)
+          if restoredSave and restoredSave.onlineAccount
+             and tostring(restoredSave.onlineAccount.token or ""):upper()
+                == tostring(acc.token or enteredToken or ""):upper() then
+            newSave = restoredSave
           end
           if not newSave then
-            local SaveDataModule = pcall(require, "src.core.SaveData") and require("src.core.SaveData") or nil
-            local bootCfg = game.bootConfig and game:bootConfig() or nil
-            newSave = (SaveDataModule and SaveDataModule.newGame and SaveDataModule.newGame(bootCfg)) or {}
+            if isGen2 then
+              local okGen2Save, Gen2SaveModule = pcall(require, "src.core.gen2.Save")
+              if okGen2Save and Gen2SaveModule and Gen2SaveModule.newGame then
+                newSave = Gen2SaveModule.newGame({ playerName = acc.name or "GOLD" })
+              end
+            end
+            if not newSave then
+              local SaveDataModule = pcall(require, "src.core.SaveData") and require("src.core.SaveData") or nil
+              local bootCfg = game.bootConfig and game:bootConfig() or nil
+              newSave = (SaveDataModule and SaveDataModule.newGame and SaveDataModule.newGame(bootCfg)) or {}
+            end
+            -- Fresh save: default starting location fields.
+            newSave.player = newSave.player or {}
+            newSave.player.map = defaultStartingOutdoor
+            newSave.player.x = defaultStartingOutdoorX
+            newSave.player.y = defaultStartingOutdoorY
+            newSave.player.facing = "down"
+            newSave.player.surfing = false
+            if isGen2 then
+              newSave.position = {
+                map = defaultStartingOutdoor,
+                x = defaultStartingOutdoorX,
+                y = defaultStartingOutdoorY,
+                facing = "down"
+              }
+              newSave.spawn = defaultStartingOutdoor
+              newSave.player.money = 3000
+            else
+              newSave.lastHeal = { map = defaultStartingOutdoor, x = defaultStartingOutdoorX, y = defaultStartingOutdoorY }
+              newSave.lastOutdoor = { id = defaultStartingOutdoor, x = defaultStartingOutdoorX, y = defaultStartingOutdoorY }
+              newSave.money = 3000
+            end
+            newSave.blackoutCount = acc.blackoutCount or 0
           end
 
+          -- Always refresh the account profile on the restored/fresh save.
           newSave.player = newSave.player or {}
           newSave.player.name = acc.name or (isGen2 and "GOLD" or "RED")
           newSave.player.id = acc.trainerId or getTrainerInfo(game.save)
-          newSave.player.map = defaultStartingOutdoor
-          newSave.player.x = defaultStartingOutdoorX
-          newSave.player.y = defaultStartingOutdoorY
-          newSave.player.facing = "down"
-          newSave.player.surfing = false
-          if isGen2 then
-            newSave.position = {
-              map = defaultStartingOutdoor,
-              x = defaultStartingOutdoorX,
-              y = defaultStartingOutdoorY,
-              facing = "down"
-            }
-            newSave.spawn = defaultStartingOutdoor
-            newSave.player.money = 3000
-          else
-            newSave.lastHeal = { map = defaultStartingOutdoor, x = defaultStartingOutdoorX, y = defaultStartingOutdoorY }
-            newSave.lastOutdoor = { id = defaultStartingOutdoor, x = defaultStartingOutdoorX, y = defaultStartingOutdoorY }
-            newSave.money = 3000
-          end
-          newSave.blackoutCount = acc.blackoutCount or 0
           newSave.onlineAccount = acc
 
+          currentGame = game
           game.save = newSave
           if game.adoptSave then game:adoptSave(game.save) end
           saveOnlineAccount(game.save)
-          writeOnlineSave(game.save)
 
           applyPlayerSprite(game, localSelectedSprite)
           isGtsServerConnected = true
 
+          -- Restore the exact saved location (existing save) or default start
+          -- (fresh save), then persist the snapshotted save so flags/mapScenes
+          -- ride along.
           local ow = getWorld(game)
           if ow then
-            ow.lastOutdoor = { id = defaultStartingOutdoor, x = defaultStartingOutdoorX, y = defaultStartingOutdoorY }
+            local pMap = (newSave.position and newSave.position.map)
+              or (newSave.player and newSave.player.map) or defaultStartingOutdoor
+            local px = (newSave.position and newSave.position.x)
+              or (newSave.player and newSave.player.x) or defaultStartingOutdoorX
+            local py = (newSave.position and newSave.position.y)
+              or (newSave.player and newSave.player.y) or defaultStartingOutdoorY
+            local pFacing = (newSave.position and newSave.position.facing)
+              or (newSave.player and newSave.player.facing) or "down"
+            if isGen2 and ow.loadPlayerData then
+              pcall(ow.loadPlayerData, ow, newSave)
+            end
             if ow.setMap then
-              pcall(function() ow:setMap(defaultStartingOutdoor, defaultStartingOutdoorX, defaultStartingOutdoorY, "down") end)
+              pcall(function() ow:setMap(pMap, px, py, pFacing) end)
             end
           end
+          writeOnlineSave(game.save)
 
           syncLocalProfile(game, 0)
           fetchGtsServerSync(acc.trainerId)
@@ -4517,6 +4562,19 @@ return function(mod)
         end
       end
       if NPCs and NPCs.spawnForMap then pcall(NPCs.spawnForMap, self) end
+      -- Persist on map transition (throttled): story scripts set event flags /
+      -- map scenes during the previous map (e.g. EVENT_RIVAL_NEW_BARK_TOWN set
+      -- at Mr. Pokémon's, Route 32 scene), and the next map change is when the
+      -- world actually reflects them. Snapshot + save here so the online save
+      -- never lags a story beat behind.
+      if isGtsServerConnected and curGame and curGame.save then
+        local nowMap = (_G.love and _G.love.timer and _G.love.timer.getTime) and _G.love.timer.getTime() or os.time()
+        local lastSave = self._gtsLastMapSaveTime or 0
+        if nowMap - lastSave >= 1.0 then
+          self._gtsLastMapSaveTime = nowMap
+          performForcedSave(curGame)
+        end
+      end
       return res
     end
 
@@ -4819,6 +4877,7 @@ return function(mod)
 
   -- Wrap Game.update to continuously service active GtsNetAdapter during battle
   mod.hooks:wrap("core.update", function(nextFn, game, dt)
+    currentGame = game
     -- MMO speed lock: while connected, every player runs at 1x (NORMAL) game
     -- speed so the online world stays in sync. Force it BEFORE the update so
     -- the frame itself runs at 1x, and repeat every frame so the speed
