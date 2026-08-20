@@ -3273,6 +3273,7 @@
               or (newSave.player and newSave.player.facing) or "down"
             if isGen2 and ow.loadPlayerData then
               pcall(ow.loadPlayerData, ow, newSave)
+              if ow.vm then ow.vm.events = ow.events end
             end
             if ow.setMap then
               pcall(function() ow:setMap(pMap, px, py, pFacing) end)
@@ -3330,25 +3331,41 @@
               localSelectedSprite = chosenSprite
               isGtsServerConnected = true
 
-              -- Use active save or initialize fresh save if none exists
-              local activeSave = game.save or {}
-              if not activeSave.party then
-                if isGen2 then
-                  local okGen2Save, Gen2SaveModule = pcall(require, "src.core.gen2.Save")
-                  if okGen2Save and Gen2SaveModule and Gen2SaveModule.newGame then
-                    activeSave = Gen2SaveModule.newGame({ playerName = chosenName, trainerId = newTid })
-                  end
-                end
-                if not activeSave.player then
-                  local SaveDataModule = pcall(require, "src.core.SaveData") and require("src.core.SaveData") or nil
-                  local bootCfg = game.bootConfig and game:bootConfig() or nil
-                  activeSave = (SaveDataModule and SaveDataModule.newGame and SaveDataModule.newGame(bootCfg)) or {}
+              -- ALWAYS build a brand-new save for a new character.  Reusing
+              -- game.save here is what kept the old character's flags, map
+              -- scenes and position alive under the new id/sprite: the fresh
+              -- online save files are gone, but the in-memory game.save from
+              -- the previous session still has a party, so the old guard
+              -- (`if not activeSave.party`) silently reused it.
+              local activeSave = nil
+              if isGen2 then
+                local okGen2Save, Gen2SaveModule = pcall(require, "src.core.gen2.Save")
+                if okGen2Save and Gen2SaveModule and Gen2SaveModule.newGame then
+                  activeSave = Gen2SaveModule.newGame({ playerName = chosenName, trainerId = newTid })
                 end
               end
-
+              if not activeSave then
+                local SaveDataModule = pcall(require, "src.core.SaveData") and require("src.core.SaveData") or nil
+                local bootCfg = game.bootConfig and game:bootConfig() or nil
+                activeSave = (SaveDataModule and SaveDataModule.newGame and SaveDataModule.newGame(bootCfg)) or {}
+              end
+              -- Fresh save: start in the player's bedroom like a new game,
+              -- not wherever the old character logged out.
               activeSave.player = activeSave.player or {}
               activeSave.player.name = chosenName
               activeSave.player.id = newTid
+              activeSave.position = {
+                map = defaultStartingIndoor,
+                x = defaultStartingIndoorX,
+                y = defaultStartingIndoorY,
+                facing = "down",
+              }
+              activeSave.player.map = defaultStartingIndoor
+              activeSave.player.x = defaultStartingIndoorX
+              activeSave.player.y = defaultStartingIndoorY
+              activeSave.player.facing = "down"
+              activeSave.player.surfing = false
+              activeSave.spawn = "SPAWN_HOME"
               activeSave.onlineAccount = {
                 trainerId = tostring(newTid),
                 name = chosenName,
@@ -3362,13 +3379,40 @@
 
               game.save = activeSave
               if game.adoptSave then game:adoptSave(game.save) end
-              saveOnlineAccount(game.save)
-              writeOnlineSave(game.save)
+              currentGame = game
+
+              -- Clear stale net state from the previous character.
+              netNpcs = {}
+              netFollowers = {}
+              isWaitingForChallenge = false
 
               -- Apply sprite to local player immediately with Gen 2 palettes
               applyPlayerSprite(game, chosenSprite)
 
+              -- Reload the LIVE world from the fresh save BEFORE persisting it.
+              -- writeOnlineSave -> currentGame:snapshotSave() folds the running
+              -- world.events into game.save.events (src/core/Game2.lua:812), so
+              -- persisting first would copy the PREVIOUS character's flags into
+              -- the fresh save and every map/flag would come back.
               local ow = getWorld(game)
+              if isGen2 and ow and ow.loadPlayerData then
+                pcall(ow.loadPlayerData, ow, game.save)
+                -- loadPlayerData REPLACES world.events with a new Events, but
+                -- the script VM was built at World:load with a reference to
+                -- the OLD events object (src/world/gen2/World.lua:931).  Re-
+                -- point it or the VM keeps reading the previous character's
+                -- flags and the fresh save never takes effect in dialogue.
+                if ow.vm then ow.vm.events = ow.events end
+              end
+              if ow and ow.setMap then
+                pcall(function() ow:setMap(defaultStartingIndoor, defaultStartingIndoorX, defaultStartingIndoorY, "down") end)
+              end
+
+              -- Now that the world mirrors the fresh save, persist it so the
+              -- online save file carries the wiped events/mapScenes, not the
+              -- previous character's.
+              saveOnlineAccount(game.save)
+              writeOnlineSave(game.save)
               syncLocalProfile(game, 0)
               fetchGtsServerSync(newTid)
 
@@ -3844,6 +3888,7 @@
             local ow = getWorld(game)
             if isGen2 and ow and ow.loadPlayerData then
               pcall(ow.loadPlayerData, ow, game.save)
+              if ow.vm then ow.vm.events = ow.events end
             end
             local pMap = (game.save.position and game.save.position.map) or (game.save.player and game.save.player.map)
             local px = (game.save.position and game.save.position.x) or (game.save.player and game.save.player.x)
@@ -3943,6 +3988,7 @@
     local ow = getWorld(game)
     if isGen2 and ow and ow.loadPlayerData then
       pcall(ow.loadPlayerData, ow, game.save)
+      if ow.vm then ow.vm.events = ow.events end
     end
 
     -- Teleport to the exact last recorded online location!
